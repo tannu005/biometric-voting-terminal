@@ -1,3 +1,5 @@
+
+
 class KioskAudio {
   constructor() {
     this.ctx = null;
@@ -24,7 +26,8 @@ class KioskAudio {
       gain.connect(this.ctx.destination);
       osc.start();
       osc.stop(this.ctx.currentTime + duration);
-    } catch (e) {}
+    } catch (e) {
+    }
   }
 
   successChord() {
@@ -51,7 +54,8 @@ const KioskState = {
   voterData: null,
   ephemeralToken: null,
   candidates: [],
-  selectedCandidate: null
+  selectedCandidate: null,
+  autoResetTimer: null
 };
 
 const screens = {
@@ -118,10 +122,12 @@ async function initWebcamStream() {
         if (imgEl) imgEl.style.display = 'none';
         if (badge) {
           badge.className = "badge pulse success";
-          badge.innerText = "CAMERA: ACTIVE";
+          badge.innerText = "WEBCAM: LIVE HUD ACTIVE";
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.log("Client webcam access not granted or unavailable, keeping standard feed:", e);
+    }
   }
 }
 
@@ -162,7 +168,7 @@ async function submitEpicLookup() {
   showEpicError("");
   const submitBtn = document.getElementById('btn-submit-epic');
   submitBtn.disabled = true;
-  submitBtn.innerText = "Verifying...";
+  submitBtn.innerText = "Verifying Registry...";
 
   try {
     const resp = await fetch('/api/voter/lookup', {
@@ -174,7 +180,7 @@ async function submitEpicLookup() {
     const data = await resp.json();
     if (!resp.ok) {
       audio.errorTone();
-      showEpicError(data.detail?.message || "Voter lookup rejected.");
+      showEpicError(data.detail?.message || "Voter verification rejected.");
       submitBtn.disabled = false;
       submitBtn.innerText = "Verify Voter Identity →";
       return;
@@ -192,7 +198,7 @@ async function submitEpicLookup() {
     setScreenState(2);
   } catch (err) {
     audio.errorTone();
-    showEpicError("Connection error.");
+    showEpicError("Network/Hardware error connecting to local terminal service.");
   } finally {
     submitBtn.disabled = false;
     submitBtn.innerText = "Verify Voter Identity →";
@@ -211,8 +217,8 @@ async function triggerFaceVerify() {
   const confidenceText = document.getElementById('face-confidence-text');
 
   scanBtn.disabled = true;
-  scanBtn.innerText = "Authenticating...";
-  statusBadge.innerText = "Scanning...";
+  scanBtn.innerText = "Analyzing Biometric Features...";
+  statusBadge.innerText = "Capturing Face & Liveness...";
 
   try {
     const resp = await fetch('/api/biometrics/face-verify', {
@@ -226,32 +232,33 @@ async function triggerFaceVerify() {
 
     if (ver.status === "MATCH_SUCCESS") {
       audio.successChord();
-      confidenceFill.style.width = \%;
-      confidenceText.innerText = \%;
+      confidenceFill.style.width = `${ver.match_score}%`;
+      confidenceText.innerText = `${ver.match_score}%`;
       statusBadge.className = "badge success";
-      statusBadge.innerText = VERIFIED: \%;
+      statusBadge.innerText = `VERIFIED: ${ver.message}`;
 
       setTimeout(() => {
         setScreenState(3);
-      }, 1000);
+      }, 1200);
     } else {
       audio.errorTone();
-      confidenceFill.style.width = \%;
-      confidenceText.innerText = \%;
+      confidenceFill.style.width = `${ver.match_score}%`;
+      confidenceText.innerText = `${ver.match_score}%`;
       statusBadge.className = "badge";
       statusBadge.style.borderColor = "var(--accent-rose)";
       statusBadge.style.color = "var(--accent-rose)";
-      statusBadge.innerText = REJECTED;
+      statusBadge.innerText = `REJECTED: ${ver.message}`;
       scanBtn.disabled = false;
-      scanBtn.innerText = "Retry";
+      scanBtn.innerText = "Retry Facial Verification";
     }
   } catch (err) {
     audio.errorTone();
-    statusBadge.innerText = "Evaluation error";
+    statusBadge.innerText = "Camera evaluation error";
     scanBtn.disabled = false;
-    scanBtn.innerText = "Retry";
+    scanBtn.innerText = "Retry Facial Verification";
   }
 }
+
 
 async function triggerLaptopPhysicalFingerprint() {
   audio.beep(700, 0.08);
@@ -266,8 +273,8 @@ async function triggerLaptopPhysicalFingerprint() {
   }
   if (btn) btn.disabled = true;
 
-  statusText.innerHTML = <span style="color: #38bdf8;">Place finger on sensor now...</span>;
-  if (subtext) subtext.innerText = "Scanning platform authenticator...";
+  statusText.innerHTML = `<span style="color: #38bdf8;">👉 TOUCH SENSOR: Place your physical finger on the laptop power button / fingerprint reader now...</span>`;
+  if (subtext) subtext.innerText = "Prompting Windows Security / Windows Hello platform authenticator...";
 
   try {
     const challenge = new Uint8Array(32);
@@ -277,7 +284,7 @@ async function triggerLaptopPhysicalFingerprint() {
     const publicKeyCredentialCreationOptions = {
       challenge: challenge,
       rp: {
-        name: "Voting Terminal",
+        name: "Air-Gapped Biometric Election Terminal",
         id: window.location.hostname
       },
       user: {
@@ -286,12 +293,12 @@ async function triggerLaptopPhysicalFingerprint() {
         displayName: KioskState.voterData?.name || "Voter"
       },
       pubKeyCredParams: [
-        { alg: -7, type: "public-key" },
+        { alg: -7, type: "public-key" }, 
         { alg: -257, type: "public-key" }
       ],
       authenticatorSelection: {
         authenticatorAttachment: "platform",
-        userVerification: "required"
+        userVerification: "required"        
       },
       timeout: 60000,
       attestation: "none"
@@ -307,8 +314,8 @@ async function triggerLaptopPhysicalFingerprint() {
         graphic.classList.remove('scanning');
         graphic.classList.add('success');
       }
-      statusText.innerHTML = <span style="color: #34d399; font-weight: bold;">✓ FINGERPRINT VERIFIED</span>;
-      if (subtext) subtext.innerText = "Hardware fingerprint confirmed";
+      statusText.innerHTML = `<span style="color: #34d399; font-weight: bold;">✓ PHYSICAL FINGERPRINT CONFIRMED (Laptop Power Button Sensor)</span>`;
+      if (subtext) subtext.innerText = `Hardware ID: ${credential.id.slice(0, 24)}... (Verified via Windows Hello)`;
 
       const resp = await fetch('/api/biometrics/fingerprint-verify', {
         method: 'POST',
@@ -327,7 +334,7 @@ async function triggerLaptopPhysicalFingerprint() {
       if (data.verification?.status === "MATCH_SUCCESS") {
         setTimeout(async () => {
           await unlockBallot();
-        }, 800);
+        }, 900);
       }
     }
   } catch (err) {
@@ -337,7 +344,12 @@ async function triggerLaptopPhysicalFingerprint() {
       graphic.classList.add('shake-highlight');
       setTimeout(() => graphic.classList.remove('shake-highlight'), 600);
     }
-    statusText.innerHTML = <span style="color: var(--accent-rose);">Sensor scan incomplete. Try again.</span>;
+    console.warn("Laptop fingerprint sensor error:", err);
+    if (err.name === 'NotAllowedError') {
+      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: bold;">⚠️ Verification Cancelled: Fingerprint touch was cancelled or timed out. Place your finger on the power button sensor and try again.</span>`;
+    } else {
+      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: bold;">⚠️ Hardware Notice: ${err.message || 'Laptop biometric device error'}. You can also use the External AS608 option.</span>`;
+    }
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -356,8 +368,8 @@ async function triggerAS608SensorScan() {
   }
   if (btn) btn.disabled = true;
 
-  statusText.innerHTML = <span style="color: #38bdf8;">Polling optical sensor...</span>;
-  if (subtext) subtext.innerText = "Place finger firmly on glass...";
+  statusText.innerHTML = `<span style="color: #38bdf8;">Polling AS608 optical sensor (/dev/ttyUSB0 or serial)...</span>`;
+  if (subtext) subtext.innerText = "Place finger firmly on external optical glass window...";
 
   try {
     const resp = await fetch('/api/biometrics/fingerprint-verify', {
@@ -380,25 +392,30 @@ async function triggerAS608SensorScan() {
         graphic.classList.remove('scanning');
         graphic.classList.add('success');
       }
-      statusText.innerHTML = <span style="color: #34d399; font-weight: bold;">✓ FINGERPRINT VERIFIED (\%)</span>;
+      statusText.innerHTML = `<span style="color: #34d399; font-weight: bold;">✓ MATCH_SUCCESS: AS608 optical minutiae verified (Confidence: ${ver.score}%)</span>`;
       setTimeout(async () => {
         await unlockBallot();
-      }, 800);
+      }, 900);
     } else {
       audio.errorTone();
       if (graphic) graphic.classList.remove('scanning');
-      statusText.innerHTML = <span style="color: var(--accent-rose);">\</span>;
+      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;">MATCH_FAIL: ${ver.message}</span>`;
     }
   } catch (err) {
     audio.errorTone();
     if (graphic) graphic.classList.remove('scanning');
-    statusText.innerText = "Sensor communication error.";
+    statusText.innerText = "AS608 UART communication error.";
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
 async function unlockBallot() {
+  const statusText = document.getElementById('fingerprint-status-text');
+  if (statusText) {
+    statusText.innerHTML = `<span style="color: #38bdf8;">Unlocking Secret Ballot (Dual-Biometrics Verified)...</span>`;
+  }
+
   try {
     const resp = await fetch('/api/ballot/authorize', {
       method: 'POST',
@@ -409,7 +426,7 @@ async function unlockBallot() {
     const data = await resp.json();
     if (!resp.ok) {
       audio.errorTone();
-      alert(data.detail?.message || "Authorization rejected.");
+      alert(data.detail?.message || "Dual-biometric authorization rejected.");
       setScreenState(1);
       return;
     }
@@ -420,7 +437,8 @@ async function unlockBallot() {
     renderCandidates(data.candidates);
     setScreenState(4);
   } catch (err) {
-    alert("Error initializing ballot.");
+    console.error("Error unlocking ballot:", err);
+    alert("Error initializing ballot access.");
   }
 }
 
@@ -432,16 +450,16 @@ function renderCandidates(candidates) {
   candidates.forEach(cand => {
     const card = document.createElement('div');
     card.className = 'candidate-card';
-    card.innerHTML = 
+    card.innerHTML = `
       <div style="display: flex; align-items: center;">
-        <div class="cand-symbol-box">\</div>
+        <div class="cand-symbol-box">${cand.symbol}</div>
         <div class="cand-info">
-          <h3>\</h3>
-          <p>\</p>
+          <h3>${cand.name}</h3>
+          <p>${cand.party}</p>
         </div>
       </div>
-      <button class="vote-press-btn" onclick="openVoteConfirmation('\')">SELECT</button>
-    ;
+      <button class="vote-press-btn" onclick="openVoteConfirmation('${cand.id}')">VOTE [TOUCH]</button>
+    `;
     container.appendChild(card);
   });
 }
@@ -472,7 +490,7 @@ async function executeCastVote() {
   const confirmBtn = document.getElementById('btn-confirm-vote');
   if (confirmBtn) {
     confirmBtn.disabled = true;
-    confirmBtn.innerText = "Recording...";
+    confirmBtn.innerText = "Signing & Casting...";
   }
 
   try {
@@ -489,10 +507,10 @@ async function executeCastVote() {
     const data = await resp.json();
     if (!resp.ok) {
       audio.errorTone();
-      alert(data.detail?.message || "Vote recording failed.");
+      alert(data.detail?.message || "Transaction broadcast failed.");
       if (confirmBtn) {
         confirmBtn.disabled = false;
-        confirmBtn.innerText = "CONFIRM VOTE";
+        confirmBtn.innerText = "CONFIRM & CAST BALLOT";
       }
       return;
     }
@@ -502,39 +520,54 @@ async function executeCastVote() {
     setScreenState(5);
   } catch (err) {
     audio.errorTone();
-    alert("Vote recording error.");
+    alert("Blockchain dispatch failed: Check local Web3 network.");
     if (confirmBtn) {
       confirmBtn.disabled = false;
-      confirmBtn.innerText = "CONFIRM VOTE";
+      confirmBtn.innerText = "CONFIRM & CAST BALLOT";
     }
   }
 }
 
 function showConfirmationReceipt(receipt) {
   audio.successChord();
-  document.getElementById('rcpt-candidate').innerText = \ \;
+  document.getElementById('rcpt-candidate').innerText = `${receipt.symbol} ${receipt.candidate_name}`;
   document.getElementById('rcpt-party').innerText = receipt.party;
   document.getElementById('rcpt-timestamp').innerText = new Date(receipt.timestamp * 1000).toLocaleString();
   document.getElementById('rcpt-nonce').innerText = receipt.ballot_nonce;
   document.getElementById('rcpt-hash').innerText = receipt.salted_voter_hash;
   document.getElementById('rcpt-zkproof').innerText = receipt.zk_proof_receipt;
   document.getElementById('rcpt-status').innerText = receipt.ledger_status;
+
+  if (KioskState.autoResetTimer) {
+    clearInterval(KioskState.autoResetTimer);
+    KioskState.autoResetTimer = null;
+  }
 }
 
 function resetKioskForNextVoter() {
   audio.beep(550, 0.08);
+  if (KioskState.autoResetTimer) {
+    clearInterval(KioskState.autoResetTimer);
+    KioskState.autoResetTimer = null;
+  }
   KioskState.activeEpic = '';
   KioskState.voterData = null;
   KioskState.ephemeralToken = null;
   KioskState.selectedCandidate = null;
+  sensorContactEstablished = false;
+  isSensorTouchActive = false;
 
   epicInput.value = '';
   showEpicError('');
 
   const graphic = document.getElementById('scanner-target-graphic');
   if (graphic) {
-    graphic.classList.remove('scanning', 'success', 'shake-highlight');
+    graphic.classList.remove('scanning', 'success', 'touch-active', 'shake-highlight');
   }
+  const progressFill = document.getElementById('contact-progress-fill');
+  const progressText = document.getElementById('contact-percent-text');
+  if (progressFill) progressFill.style.width = '0%';
+  if (progressText) progressText.innerText = '0%';
 
   const btnLaptop = document.getElementById('btn-scan-laptop-fp');
   if (btnLaptop) btnLaptop.disabled = false;
@@ -543,12 +576,12 @@ function resetKioskForNextVoter() {
 
   const fpStatus = document.getElementById('fingerprint-status-text');
   if (fpStatus) {
-    fpStatus.innerText = "Touch fingerprint sensor";
+    fpStatus.innerText = "Touch your laptop power button / fingerprint sensor";
   }
 
   const subtext = document.getElementById('fingerprint-subtext');
   if (subtext) {
-    subtext.innerText = "Physical Biometric Sensor";
+    subtext.innerText = "Active Hardware: Built-in Physical Biometric Sensor (Windows Hello Platform Authenticator)";
   }
 
   setScreenState(1);
@@ -560,12 +593,16 @@ async function checkSystemDiagnostic() {
     const data = await resp.json();
     const as608Badge = document.getElementById('badge-as608-status');
     if (as608Badge && data.hardware?.as608_fingerprint_scanner) {
-      as608Badge.innerText = AS608: READY;
+      const mode = data.hardware.as608_fingerprint_scanner.active_mode;
+      as608Badge.innerText = `AS608: ${mode}`;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn("System diagnostic unreachable", e);
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   setScreenState(1);
   checkSystemDiagnostic();
+  initSensorTouchListeners();
 });
