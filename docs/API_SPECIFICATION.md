@@ -1,7 +1,6 @@
-# Formally Defined JSON API Contract Specifications
-**System:** Air-Gapped Hardware-Enforced Biometric Voting Terminal  
-**Subsystem Interfaces:** Member C (Kiosk Frontend & Dual-Biometrics) $\longleftrightarrow$ Member B (Web3 Engine) $\longleftrightarrow$ Member D (Audit Logging)  
-**Standard Adherence:** IEEE 29115 Level-4 Entity Authentication, ISO/IEC 27001  
+# API Specification
+**System:** Biometric Voting Terminal  
+**Format:** REST / JSON
 
 ---
 
@@ -14,19 +13,19 @@
 +---------------------------------------+---------------------------------------+
                                         | REST / JSON / MJPEG
 +---------------------------------------v---------------------------------------+
-|                       LOCAL TERMINAL CONTROLLER (Tannu)                       |
-|   FastAPI Air-Gapped Engine • OpenCV Face Pipeline • AS608 UART Driver (UART) |
-|         Deterministic Salted Hashing • Ephemeral Token State Machine          |
+|                          LOCAL TERMINAL BACKEND                               |
+|       FastAPI Engine • OpenCV Face Pipeline • AS608 UART Driver               |
+|            Deterministic Salted Hashing • Ephemeral Tokens                    |
 +---------------------------------------+---------------------------------------+
-                                        | POST JSON Decoupled Payload
+                                        | POST Decoupled Payload
 +---------------------------------------v---------------------------------------+
-|                        MEMBER B: WEB3 EXECUTION ENGINE                         |
-|      Local Geth/Ganache EVM Node • web3.py • Solidity Ballot Smart Contract   |
+|                        LEDGER / SMART CONTRACT DISPATCH                       |
+|           Append-Only Audit Ledger • Web3 Ballot Verification                 |
 +---------------------------------------+---------------------------------------+
-                                        | Event Log Stream
+                                        | Audit Stream
 +---------------------------------------v---------------------------------------+
-|                    MEMBER D: ADMINISTRATIVE AUDIT PORTAL                      |
-|       Cryptographic Merkle Audit Log • VVPAT Verifier • Zero PII Leakage      |
+|                              AUDIT PORTAL                                     |
+|             Cryptographic Verification • Zero PII Leakage                     |
 +-------------------------------------------------------------------------------+
 ```
 
@@ -37,7 +36,6 @@
 ### 2.1 Voter Eligibility & Registry Lookup
 - **Endpoint:** `POST /api/voter/lookup`
 - **Caller:** Kiosk UI (Step 1)
-- **Producer:** Member C Local Backend
 - **Request Schema:**
 ```json
 {
@@ -76,7 +74,6 @@
 ### 2.2 Live Facial Biometric Verification
 - **Endpoint:** `POST /api/biometrics/face-verify`
 - **Caller:** Kiosk UI (Step 2)
-- **Producer:** Member C Computer Vision Pipeline (`face_verify.py`)
 - **Request Schema:**
 ```json
 {
@@ -94,7 +91,7 @@
     "distance": 0.16,
     "liveness": true,
     "liveness_score": 92.0,
-    "engine": "OpenCV_AirGapped",
+    "engine": "OpenCV",
     "message": "Voter biometric facial identity verified (94.8% match)"
   },
   "session_status": {
@@ -111,7 +108,6 @@
 ### 2.3 Optical Fingerprint Verification (AS608 UART)
 - **Endpoint:** `POST /api/biometrics/fingerprint-verify`
 - **Caller:** Kiosk UI (Step 3)
-- **Producer:** Member C Hardware Driver (`as608.py`)
 - **Request Schema:**
 ```json
 {
@@ -172,9 +168,9 @@
 
 ### 2.5 Decoupled Vote Casting & Web3 Broadcast
 - **Endpoint:** `POST /api/ballot/cast`
-- **Caller:** Kiosk UI (Step 4 & 5)
-- **Receiver:** Member C Engine $\longrightarrow$ Dispatches to Member B (`http://localhost:8545/api/vote`)
-- **Payload Schema Sent to Member B Web3 Module:**
+- **Caller:** Kiosk UI (Step 5)
+- **Dispatch:** Terminal Engine $\longrightarrow$ Append-Only Ledger / EVM Endpoint
+- **Payload Schema:**
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -227,7 +223,7 @@
 
 ### 2.6 System Hardware Diagnostic Health
 - **Endpoint:** `GET /api/system/status`
-- **Consumer:** Kiosk Top HUD & Member D Audit Portal
+- **Consumer:** Terminal Status Bar & Audit Monitoring
 - **Response (200 OK):**
 ```json
 {

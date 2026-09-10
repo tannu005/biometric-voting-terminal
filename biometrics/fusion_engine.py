@@ -1,20 +1,10 @@
-"""
-Multimodal Biometric Sensor Fusion Engine
-Combines Facial Verification (OpenCV / DeepFace + Passive Liveness)
-with Optical Fingerprint Minutiae Analysis (AS608 Sensor)
-into a unified, hardware-enforced local validation state.
-
-Guarantees IEEE 29115 Level-4 Entity Authentication Assurance
-before issuing ephemeral ballot authorization tokens to the Web3 module.
-"""
-
 import time
 import logging
 from typing import Dict, Any, Optional
 from hardware.as608 import as608_sensor
 from biometrics.face_verify import face_pipeline
 
-logger = logging.getLogger("Fusion_Engine")
+logger = logging.getLogger("fusion")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 class BiometricFusionEngine:
@@ -25,7 +15,6 @@ class BiometricFusionEngine:
         self.active_sessions: Dict[str, Dict[str, Any]] = {}
 
     def start_session(self, voter_epic: str, expected_slot: int = 1) -> Dict[str, Any]:
-        """Initializes a new biometric validation cycle for a voter EPIC."""
         session = {
             "voter_epic": voter_epic,
             "expected_slot": expected_slot,
@@ -37,23 +26,19 @@ class BiometricFusionEngine:
             "rejection_reason": None
         }
         self.active_sessions[voter_epic] = session
-        logger.info(f"Initialized multimodal biometric session for EPIC: {voter_epic}")
         return session
 
     def process_facial_verification(self, voter_epic: str, force_mock: Optional[bool] = None) -> Dict[str, Any]:
-        """Runs webcam capture and evaluates facial match against voter reference."""
         session = self.active_sessions.get(voter_epic)
         if not session:
             session = self.start_session(voter_epic)
 
         face_eval = face_pipeline.verify_voter_face(voter_epic, force_mock=force_mock)
         session["face_result"] = face_eval
-        logger.info(f"Facial verification processed for {voter_epic}: {face_eval['status']} (Score: {face_eval['match_score']}%)")
         self._evaluate_consensus(session)
         return face_eval
 
     def process_fingerprint_verification(self, voter_epic: str, timeout_sec: float = 6.0, touch_detected: bool = False) -> Dict[str, Any]:
-        """Prompts AS608 optical sensor and captures ridge minutiae."""
         session = self.active_sessions.get(voter_epic)
         if not session:
             session = self.start_session(voter_epic)
@@ -61,15 +46,10 @@ class BiometricFusionEngine:
         expected_slot = session.get("expected_slot", 1)
         fp_eval = as608_sensor.verify_fingerprint(expected_voter_slot=expected_slot, timeout_sec=timeout_sec, touch_detected=touch_detected)
         session["fingerprint_result"] = fp_eval
-        logger.info(f"AS608 Fingerprint verification processed for {voter_epic}: {fp_eval['status']} (Score: {fp_eval['score']})")
         self._evaluate_consensus(session)
         return fp_eval
 
     def process_laptop_fingerprint(self, voter_epic: str, credential_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Processes physical fingerprint verification from the laptop's built-in
-        biometric sensor (Power button / Windows Hello / Platform Authenticator).
-        """
         session = self.active_sessions.get(voter_epic)
         if not session:
             session = self.start_session(voter_epic)
@@ -78,73 +58,64 @@ class BiometricFusionEngine:
             fp_eval = {
                 "status": "MATCH_FAIL",
                 "score": 0,
-                "mode": "LAPTOP_POWER_BUTTON_BIOMETRIC",
-                "message": "No physical fingerprint detected on laptop sensor."
+                "mode": "LAPTOP_FINGERPRINT",
+                "message": "No fingerprint detected."
             }
         else:
             fp_eval = {
                 "status": "MATCH_SUCCESS",
                 "score": 99,
                 "page_id": 1,
-                "mode": "LAPTOP_POWER_BUTTON_BIOMETRIC",
+                "mode": "LAPTOP_FINGERPRINT",
                 "credential_id": credential_data.get("id", "")[:16] + "...",
-                "message": "Physical fingerprint verified via laptop biometric hardware (Power button / Windows Hello)"
+                "message": "Fingerprint verified"
             }
 
         session["fingerprint_result"] = fp_eval
-        logger.info(f"Laptop Physical Fingerprint processed for {voter_epic}: {fp_eval['status']}")
         self._evaluate_consensus(session)
         return fp_eval
 
     def _evaluate_consensus(self, session: Dict[str, Any]) -> bool:
-        """
-        Multimodal Decision Logic:
-        Requires BOTH biometric modalities to strictly pass:
-        1. Face Match == MATCH_SUCCESS and Score >= MIN_FACE_SCORE and Liveness == True
-        2. Fingerprint Match == MATCH_SUCCESS and Score >= MIN_FINGERPRINT_SCORE
-        """
         face = session.get("face_result")
         fp = session.get("fingerprint_result")
 
         if not face:
             session["is_fully_validated"] = False
-            session["rejection_reason"] = "Awaiting facial biometric scan"
+            session["rejection_reason"] = "Awaiting facial scan"
             return False
 
         if face.get("status") != "MATCH_SUCCESS" or face.get("match_score", 0) < self.MIN_FACE_SCORE:
             session["is_fully_validated"] = False
-            session["rejection_reason"] = "Facial recognition similarity below security threshold"
+            session["rejection_reason"] = "Facial recognition threshold not met"
             return False
 
         if not face.get("liveness", False):
             session["is_fully_validated"] = False
-            session["rejection_reason"] = "Passive facial liveness detection failed (anti-spoofing alert)"
+            session["rejection_reason"] = "Liveness check failed"
             return False
 
         if not fp:
             session["is_fully_validated"] = False
-            session["rejection_reason"] = "Awaiting optical fingerprint placement"
+            session["rejection_reason"] = "Awaiting fingerprint scan"
             return False
 
         if fp.get("status") != "MATCH_SUCCESS" or fp.get("score", 0) < self.MIN_FINGERPRINT_SCORE:
             session["is_fully_validated"] = False
-            session["rejection_reason"] = "Fingerprint minutiae mismatch or optical ridge failure"
+            session["rejection_reason"] = "Fingerprint verification failed"
             return False
 
         session["is_fully_validated"] = True
         session["validation_timestamp"] = time.time()
         session["rejection_reason"] = None
-        logger.info(f"[BIOMETRIC CONSENSUS PASSED] Dual-biometric identity confirmed for EPIC: {session['voter_epic']}")
         return True
 
     def get_session_status(self, voter_epic: str) -> Dict[str, Any]:
-        """Returns comprehensive state for kiosk HUD and Web3 handshake."""
         session = self.active_sessions.get(voter_epic)
         if not session:
             return {
                 "exists": False,
                 "is_fully_validated": False,
-                "message": "No active biometric session for this EPIC"
+                "message": "No active session for this EPIC"
             }
         
         face = session.get("face_result")
@@ -171,11 +142,7 @@ class BiometricFusionEngine:
         }
 
     def clear_session(self, voter_epic: str):
-        """Purges in-memory biometric session post-vote to maintain strict voter privacy."""
         if voter_epic in self.active_sessions:
             del self.active_sessions[voter_epic]
-            logger.info(f"Purged biometric cache for EPIC: {voter_epic}")
 
-
-# Singleton fusion engine
 fusion_engine = BiometricFusionEngine()

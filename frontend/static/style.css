@@ -12,7 +12,6 @@
   --accent-rose: #f43f5e;
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
-
 * {
   box-sizing: border-box;
   margin: 0;
@@ -20,7 +19,6 @@
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
-
 body {
   background-color: var(--bg-main);
   color: var(--text-main);
@@ -30,8 +28,6 @@ body {
   flex-direction: column;
   overflow-x: hidden;
 }
-
-/* Header */
 .terminal-header {
   background: rgba(19, 27, 46, 0.95);
   backdrop-filter: blur(12px);
@@ -44,13 +40,11 @@ body {
   top: 0;
   z-index: 100;
 }
-
 .brand-wrapper {
   display: flex;
   align-items: center;
   gap: 16px;
 }
-
 .emblem {
   font-size: 28px;
   background: linear-gradient(135deg, #1e293b, #0f172a);
@@ -63,27 +57,23 @@ body {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
-
 .brand-text h1 {
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: #ffffff;
 }
-
 .brand-text p {
   font-size: 0.75rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
-
 .system-status-badges {
   display: flex;
   gap: 10px;
   align-items: center;
 }
-
 .badge {
   display: inline-flex;
   align-items: center;
@@ -96,13 +86,11 @@ body {
   border: 1px solid #334155;
   color: #cbd5e1;
 }
-
 .badge.success {
   border-color: rgba(16, 185, 129, 0.3);
   color: #34d399;
   background: rgba(16, 185, 129, 0.1);
 }
-
 .badge.pulse::before {
   content: '';
   width: 8px;
@@ -112,26 +100,21 @@ body {
   box-shadow: 0 0 8px #10b981;
   animation: pulse-dot 1.5s infinite;
 }
-
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.85); }
 }
-
-/* Stepper Progress Bar */
 .stepper-container {
   max-width: 900px;
   margin: 18px auto 6px auto;
   width: 100%;
   padding: 0 20px;
 }
-
 .stepper {
   display: flex;
   justify-content: space-between;
   position: relative;
 }
-
 .stepper::before {
   content: '';
   position: absolute;
@@ -143,7 +126,6 @@ body {
   transform: translateY(-50%);
   z-index: 1;
 }
-
 .step-item {
   position: relative;
   z-index: 2;
@@ -152,7 +134,6 @@ body {
   align-items: center;
   gap: 6px;
 }
-
 .step-circle {
   width: 38px;
   height: 38px;
@@ -167,7 +148,6 @@ body {
   color: #64748b;
   transition: all 0.3s ease;
 }
-
 .step-title {
   font-size: 0.72rem;
   font-weight: 600;
@@ -175,29 +155,23 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-
 .step-item.active .step-circle {
   background: #2563eb;
   border-color: #60a5fa;
   color: #ffffff;
   box-shadow: 0 0 16px rgba(59, 130, 246, 0.6);
 }
-
 .step-item.active .step-title {
   color: #93c5fd;
 }
-
 .step-item.completed .step-circle {
   background: #059669;
   border-color: #34d399;
   color: #ffffff;
 }
-
 .step-item.completed .step-title {
   color: #34d399;
 }
-
-/* Main Container */
 .kiosk-main {
   flex: 1;
   display: flex;
@@ -205,7 +179,6 @@ body {
   justify-content: center;
   padding: 20px;
 }
-
 .screen-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -216,50 +189,41 @@ body {
   box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
   position: relative;
   overflow: hidden;
-  display: none; /* hidden until active */
+  display: none; 
 }
-
 .screen-card.active {
   display: block;
   animation: fadeIn 0.35s ease forwards;
 }
-
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 .screen-title-area {
   text-align: center;
   margin-bottom: 28px;
 }
-
 .screen-title {
   font-size: 1.75rem;
   font-weight: 700;
   color: #ffffff;
   margin-bottom: 8px;
 }
-
 .screen-desc {
   font-size: 0.95rem;
   color: var(--text-muted);
 }
-
-/* STEP 1: EPIC Input */
 .epic-input-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
 }
-
 .input-box-wrapper {
   width: 100%;
   max-width: 480px;
   position: relative;
 }
-
 .input-epic {
   width: 100%;
   background: #0b1120;
@@ -275,12 +239,10 @@ body {
   outline: none;
   transition: all 0.25s ease;
 }
-
 .input-epic:focus {
   border-color: #38bdf8;
   box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
 }
-
 .quick-test-voters {
   display: flex;
   flex-wrap: wrap;
@@ -288,7 +250,6 @@ body {
   justify-content: center;
   max-width: 600px;
 }
-
 .quick-chip {
   background: #1e293b;
   border: 1px solid #334155;
@@ -300,14 +261,11 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-
 .quick-chip:hover {
   background: #334155;
   color: #ffffff;
   border-color: #64748b;
 }
-
-/* Digital On-Screen Keypad */
 .touch-keypad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -316,7 +274,6 @@ body {
   width: 100%;
   margin-top: 10px;
 }
-
 .key-btn {
   background: #1a253e;
   border: 1px solid #2d3e64;
@@ -331,13 +288,10 @@ body {
   justify-content: center;
   transition: all 0.15s ease;
 }
-
 .key-btn:active {
   background: #2563eb;
   transform: scale(0.96);
 }
-
-/* Primary Action Buttons */
 .btn-primary {
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   border: none;
@@ -353,25 +307,20 @@ body {
   gap: 10px;
   transition: all 0.2s ease;
 }
-
 .btn-primary:hover {
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   transform: translateY(-2px);
   box-shadow: 0 14px 30px -5px rgba(59, 130, 246, 0.6);
 }
-
 .btn-primary:active {
   transform: translateY(0);
 }
-
-/* STEP 2: Facial Recognition HUD */
 .face-hud-layout {
   display: grid;
   grid-template-columns: 1.3fr 1fr;
   gap: 28px;
   align-items: center;
 }
-
 .video-frame-box {
   position: relative;
   background: #000;
@@ -381,14 +330,12 @@ body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
   aspect-ratio: 4 / 3;
 }
-
 .video-stream {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
-
 .video-overlay-elements {
   position: absolute;
   top: 12px;
@@ -398,7 +345,6 @@ body {
   justify-content: space-between;
   pointer-events: none;
 }
-
 .voter-profile-panel {
   background: #0f172a;
   border: 1px solid var(--border-color);
@@ -408,7 +354,6 @@ body {
   flex-direction: column;
   gap: 18px;
 }
-
 .voter-photo-preview {
   width: 90px;
   height: 90px;
@@ -417,27 +362,23 @@ body {
   object-fit: cover;
   background: #1e293b;
 }
-
 .metric-bar-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-
 .metric-header {
   display: flex;
   justify-content: space-between;
   font-size: 0.8rem;
   color: var(--text-muted);
 }
-
 .progress-track {
   height: 10px;
   background: #1e293b;
   border-radius: 9999px;
   overflow: hidden;
 }
-
 .progress-fill {
   height: 100%;
   width: 0%;
@@ -445,15 +386,12 @@ body {
   border-radius: 9999px;
   transition: width 0.4s ease;
 }
-
-/* STEP 3: Fingerprint Scanner Prompt */
 .fingerprint-stage {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
 }
-
 .scanner-graphic {
   position: relative;
   width: 190px;
@@ -469,20 +407,17 @@ body {
   transition: all 0.2s ease;
   touch-action: none;
 }
-
 .scanner-graphic:hover {
   border-color: #38bdf8;
   box-shadow: 0 0 45px rgba(56, 189, 248, 0.45);
   transform: scale(1.02);
 }
-
 .scanner-graphic.touch-active {
   border-color: #38bdf8;
   background: radial-gradient(circle, #1e3a8a 0%, #0b1120 80%);
   box-shadow: 0 0 50px rgba(56, 189, 248, 0.7);
   transform: scale(0.97);
 }
-
 .scanner-touch-instruction {
   display: inline-flex;
   align-items: center;
@@ -496,7 +431,6 @@ body {
   padding: 6px 14px;
   border-radius: 9999px;
 }
-
 .touch-pulse-dot {
   width: 8px;
   height: 8px;
@@ -505,26 +439,22 @@ body {
   box-shadow: 0 0 8px #38bdf8;
   animation: pulse-dot 1.2s infinite;
 }
-
 .scanner-graphic.shake-highlight {
   animation: shakeAlert 0.4s ease-in-out;
   border-color: #f43f5e !important;
   box-shadow: 0 0 30px rgba(244, 63, 94, 0.6) !important;
 }
-
 @keyframes shakeAlert {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-8px); }
   40%, 80% { transform: translateX(8px); }
 }
-
 .scanner-icon {
   font-size: 78px;
   color: #60a5fa;
   transition: all 0.2s ease;
   pointer-events: none;
 }
-
 .scanner-laser {
   position: absolute;
   top: 0;
@@ -537,38 +467,30 @@ body {
   animation: scanLaser 1.5s infinite ease-in-out;
   display: none;
 }
-
 .scanner-graphic.scanning .scanner-laser {
   display: block;
 }
-
 .scanner-graphic.scanning .scanner-icon {
   color: #38bdf8;
 }
-
 .scanner-graphic.success {
   border-color: #10b981;
   box-shadow: 0 0 45px rgba(16, 185, 129, 0.7);
 }
-
 .scanner-graphic.success .scanner-icon {
   color: #10b981;
 }
-
 @keyframes scanLaser {
   0% { top: 15%; opacity: 0.2; }
   50% { top: 85%; opacity: 1; }
   100% { top: 15%; opacity: 0.2; }
 }
-
-/* STEP 4: Ballot Selection */
 .candidates-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 18px;
   margin-bottom: 24px;
 }
-
 .candidate-card {
   background: #0f172a;
   border: 2px solid #1e293b;
@@ -580,20 +502,17 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-
 .candidate-card:hover {
   background: #172554;
   border-color: #3b82f6;
   transform: translateY(-3px);
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
 }
-
 .candidate-card.selected {
   border-color: #10b981;
   background: #064e3b;
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
 }
-
 .cand-symbol-box {
   font-size: 38px;
   width: 64px;
@@ -605,19 +524,16 @@ body {
   justify-content: center;
   margin-right: 16px;
 }
-
 .cand-info h3 {
   font-size: 1.15rem;
   font-weight: 700;
   color: #ffffff;
   margin-bottom: 4px;
 }
-
 .cand-info p {
   font-size: 0.85rem;
   color: #94a3b8;
 }
-
 .vote-press-btn {
   background: #2563eb;
   border: none;
@@ -629,12 +545,9 @@ body {
   cursor: pointer;
   transition: background 0.2s ease;
 }
-
 .vote-press-btn:hover {
   background: #1d4ed8;
 }
-
-/* Modal Confirmation */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -645,7 +558,6 @@ body {
   justify-content: center;
   z-index: 200;
 }
-
 .modal-card {
   background: #131b2e;
   border: 1px solid #334155;
@@ -656,8 +568,6 @@ body {
   text-align: center;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
 }
-
-/* STEP 5: VVPAT Cryptographic Receipt */
 .receipt-wrapper {
   background: #f8fafc;
   color: #0f172a;
@@ -669,7 +579,6 @@ body {
   font-family: 'Courier New', Courier, monospace;
   position: relative;
 }
-
 .receipt-wrapper::before {
   content: '';
   position: absolute;
@@ -680,26 +589,22 @@ body {
   background: radial-gradient(circle, transparent, transparent 50%, #f8fafc 50%, #f8fafc 100%);
   background-size: 12px 12px;
 }
-
 .receipt-header {
   text-align: center;
   border-bottom: 2px dashed #94a3b8;
   padding-bottom: 12px;
   margin-bottom: 14px;
 }
-
 .receipt-row {
   display: flex;
   justify-content: space-between;
   margin-bottom: 8px;
   font-size: 0.85rem;
 }
-
 .receipt-row.bold {
   font-weight: bold;
   font-size: 0.95rem;
 }
-
 .hash-box {
   word-break: break-all;
   background: #e2e8f0;
@@ -708,8 +613,6 @@ body {
   font-size: 0.72rem;
   margin-top: 4px;
 }
-
-/* Footer */
 .terminal-footer {
   background: #090d16;
   border-top: 1px solid #1e293b;
@@ -720,8 +623,6 @@ body {
   font-size: 0.75rem;
   color: #64748b;
 }
-
-/* Responsive adjustments */
 @media (max-width: 768px) {
   .face-hud-layout {
     grid-template-columns: 1fr;
@@ -734,8 +635,6 @@ body {
     flex-wrap: wrap;
   }
 }
-
-/* Official VVPAT Paper Print Format */
 @media print {
   body {
     background: #ffffff !important;

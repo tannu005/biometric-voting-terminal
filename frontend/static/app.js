@@ -1,14 +1,3 @@
-/**
- * Air-Gapped Biometric Voting Kiosk - Frontend State Machine
- * Screen States:
- * 1. STATE_EPIC_INPUT
- * 2. STATE_FACIAL_SCAN
- * 3. STATE_FINGERPRINT
- * 4. STATE_BALLOT_SELECTION
- * 5. STATE_CONFIRMATION
- */
-
-// Sound Synthesizer for tactile touch feedback
 class KioskAudio {
   constructor() {
     this.ctx = null;
@@ -35,15 +24,13 @@ class KioskAudio {
       gain.connect(this.ctx.destination);
       osc.start();
       osc.stop(this.ctx.currentTime + duration);
-    } catch (e) {
-      // Audio not permitted without interaction
-    }
+    } catch (e) {}
   }
 
   successChord() {
-    this.beep(523.25, 0.1); // C5
-    setTimeout(() => this.beep(659.25, 0.1), 80); // E5
-    setTimeout(() => this.beep(783.99, 0.2), 160); // G5
+    this.beep(523.25, 0.1);
+    setTimeout(() => this.beep(659.25, 0.1), 80);
+    setTimeout(() => this.beep(783.99, 0.2), 160);
   }
 
   errorTone() {
@@ -58,18 +45,15 @@ class KioskAudio {
 
 const audio = new KioskAudio();
 
-// Application State
 const KioskState = {
   currentStep: 1,
   activeEpic: '',
   voterData: null,
   ephemeralToken: null,
   candidates: [],
-  selectedCandidate: null,
-  autoResetTimer: null
+  selectedCandidate: null
 };
 
-// DOM References
 const screens = {
   1: document.getElementById('screen-epic'),
   2: document.getElementById('screen-face'),
@@ -86,11 +70,9 @@ const stepperItems = {
   5: document.getElementById('step-indicator-5')
 };
 
-// Switch between screen states
 function setScreenState(stepNumber) {
   KioskState.currentStep = stepNumber;
 
-  // Update screens
   Object.keys(screens).forEach(step => {
     if (parseInt(step) === stepNumber) {
       screens[step].classList.add('active');
@@ -99,7 +81,6 @@ function setScreenState(stepNumber) {
     }
   });
 
-  // Update Stepper
   Object.keys(stepperItems).forEach(step => {
     const num = parseInt(step);
     const item = stepperItems[step];
@@ -137,18 +118,13 @@ async function initWebcamStream() {
         if (imgEl) imgEl.style.display = 'none';
         if (badge) {
           badge.className = "badge pulse success";
-          badge.innerText = "WEBCAM: LIVE HUD ACTIVE";
+          badge.innerText = "CAMERA: ACTIVE";
         }
       }
-    } catch (e) {
-      console.log("Client webcam access not granted or unavailable, keeping standard feed:", e);
-    }
+    } catch (e) {}
   }
 }
 
-// -------------------------------------------------------------
-// STEP 1: Voter Identity & EPIC Lookup
-// -------------------------------------------------------------
 const epicInput = document.getElementById('epic-input-field');
 const epicErrorMsg = document.getElementById('epic-error-msg');
 
@@ -186,7 +162,7 @@ async function submitEpicLookup() {
   showEpicError("");
   const submitBtn = document.getElementById('btn-submit-epic');
   submitBtn.disabled = true;
-  submitBtn.innerText = "Verifying Registry...";
+  submitBtn.innerText = "Verifying...";
 
   try {
     const resp = await fetch('/api/voter/lookup', {
@@ -198,7 +174,7 @@ async function submitEpicLookup() {
     const data = await resp.json();
     if (!resp.ok) {
       audio.errorTone();
-      showEpicError(data.detail?.message || "Voter verification rejected.");
+      showEpicError(data.detail?.message || "Voter lookup rejected.");
       submitBtn.disabled = false;
       submitBtn.innerText = "Verify Voter Identity →";
       return;
@@ -208,7 +184,6 @@ async function submitEpicLookup() {
     KioskState.activeEpic = epic;
     KioskState.voterData = data.voter;
 
-    // Populate Step 2 Profile
     document.getElementById('hud-voter-name').innerText = data.voter.name;
     document.getElementById('hud-voter-epic').innerText = data.voter.epic;
     document.getElementById('hud-voter-constituency').innerText = data.voter.constituency;
@@ -217,7 +192,7 @@ async function submitEpicLookup() {
     setScreenState(2);
   } catch (err) {
     audio.errorTone();
-    showEpicError("Network/Hardware error connecting to local terminal service.");
+    showEpicError("Connection error.");
   } finally {
     submitBtn.disabled = false;
     submitBtn.innerText = "Verify Voter Identity →";
@@ -228,9 +203,6 @@ function showEpicError(msg) {
   epicErrorMsg.innerText = msg;
 }
 
-// -------------------------------------------------------------
-// STEP 2: Facial Recognition HUD
-// -------------------------------------------------------------
 async function triggerFaceVerify() {
   audio.beep(600, 0.08);
   const scanBtn = document.getElementById('btn-capture-face');
@@ -239,8 +211,8 @@ async function triggerFaceVerify() {
   const confidenceText = document.getElementById('face-confidence-text');
 
   scanBtn.disabled = true;
-  scanBtn.innerText = "Analyzing Biometric Features...";
-  statusBadge.innerText = "Capturing Face & Liveness...";
+  scanBtn.innerText = "Authenticating...";
+  statusBadge.innerText = "Scanning...";
 
   try {
     const resp = await fetch('/api/biometrics/face-verify', {
@@ -254,38 +226,33 @@ async function triggerFaceVerify() {
 
     if (ver.status === "MATCH_SUCCESS") {
       audio.successChord();
-      confidenceFill.style.width = `${ver.match_score}%`;
-      confidenceText.innerText = `${ver.match_score}%`;
+      confidenceFill.style.width = \%;
+      confidenceText.innerText = \%;
       statusBadge.className = "badge success";
-      statusBadge.innerText = `VERIFIED: ${ver.message}`;
+      statusBadge.innerText = VERIFIED: \%;
 
       setTimeout(() => {
-        setScreenState(3); // Advance to Fingerprint
-      }, 1200);
+        setScreenState(3);
+      }, 1000);
     } else {
       audio.errorTone();
-      confidenceFill.style.width = `${ver.match_score}%`;
-      confidenceText.innerText = `${ver.match_score}%`;
+      confidenceFill.style.width = \%;
+      confidenceText.innerText = \%;
       statusBadge.className = "badge";
       statusBadge.style.borderColor = "var(--accent-rose)";
       statusBadge.style.color = "var(--accent-rose)";
-      statusBadge.innerText = `REJECTED: ${ver.message}`;
+      statusBadge.innerText = REJECTED;
       scanBtn.disabled = false;
-      scanBtn.innerText = "Retry Facial Verification";
+      scanBtn.innerText = "Retry";
     }
   } catch (err) {
     audio.errorTone();
-    statusBadge.innerText = "Camera evaluation error";
+    statusBadge.innerText = "Evaluation error";
     scanBtn.disabled = false;
-    scanBtn.innerText = "Retry Facial Verification";
+    scanBtn.innerText = "Retry";
   }
 }
 
-// -------------------------------------------------------------
-// STEP 3: Physical Fingerprint Verification (Laptop Power Button & AS608)
-// -------------------------------------------------------------
-
-// Trigger laptop built-in physical fingerprint sensor (Power Button / Windows Hello)
 async function triggerLaptopPhysicalFingerprint() {
   audio.beep(700, 0.08);
   const statusText = document.getElementById('fingerprint-status-text');
@@ -299,11 +266,10 @@ async function triggerLaptopPhysicalFingerprint() {
   }
   if (btn) btn.disabled = true;
 
-  statusText.innerHTML = `<span style="color: #38bdf8;">👉 TOUCH SENSOR: Place your physical finger on the laptop power button / fingerprint reader now...</span>`;
-  if (subtext) subtext.innerText = "Prompting Windows Security / Windows Hello platform authenticator...";
+  statusText.innerHTML = <span style="color: #38bdf8;">Place finger on sensor now...</span>;
+  if (subtext) subtext.innerText = "Scanning platform authenticator...";
 
   try {
-    // Generate secure challenge
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
     const userId = new TextEncoder().encode(KioskState.activeEpic || "VOTER-ID");
@@ -311,7 +277,7 @@ async function triggerLaptopPhysicalFingerprint() {
     const publicKeyCredentialCreationOptions = {
       challenge: challenge,
       rp: {
-        name: "Air-Gapped Biometric Election Terminal",
+        name: "Voting Terminal",
         id: window.location.hostname
       },
       user: {
@@ -320,33 +286,30 @@ async function triggerLaptopPhysicalFingerprint() {
         displayName: KioskState.voterData?.name || "Voter"
       },
       pubKeyCredParams: [
-        { alg: -7, type: "public-key" },  // ES256
-        { alg: -257, type: "public-key" } // RS256
+        { alg: -7, type: "public-key" },
+        { alg: -257, type: "public-key" }
       ],
       authenticatorSelection: {
-        authenticatorAttachment: "platform", // LAPTOP POWER BUTTON FINGERPRINT SENSOR
-        userVerification: "required"         // ENFORCES PHYSICAL BIOMETRIC TOUCH
+        authenticatorAttachment: "platform",
+        userVerification: "required"
       },
       timeout: 60000,
       attestation: "none"
     };
 
-    // This immediately summons the native Windows Hello fingerprint prompt!
     const credential = await navigator.credentials.create({
       publicKey: publicKeyCredentialCreationOptions
     });
 
     if (credential) {
-      // Physical finger on power button verified by laptop biometric hardware!
       audio.successChord();
       if (graphic) {
         graphic.classList.remove('scanning');
         graphic.classList.add('success');
       }
-      statusText.innerHTML = `<span style="color: #34d399; font-weight: bold;">✓ PHYSICAL FINGERPRINT CONFIRMED (Laptop Power Button Sensor)</span>`;
-      if (subtext) subtext.innerText = `Hardware ID: ${credential.id.slice(0, 24)}... (Verified via Windows Hello)`;
+      statusText.innerHTML = <span style="color: #34d399; font-weight: bold;">✓ FINGERPRINT VERIFIED</span>;
+      if (subtext) subtext.innerText = "Hardware fingerprint confirmed";
 
-      // Dispatch to backend
       const resp = await fetch('/api/biometrics/fingerprint-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -364,7 +327,7 @@ async function triggerLaptopPhysicalFingerprint() {
       if (data.verification?.status === "MATCH_SUCCESS") {
         setTimeout(async () => {
           await unlockBallot();
-        }, 900);
+        }, 800);
       }
     }
   } catch (err) {
@@ -374,18 +337,12 @@ async function triggerLaptopPhysicalFingerprint() {
       graphic.classList.add('shake-highlight');
       setTimeout(() => graphic.classList.remove('shake-highlight'), 600);
     }
-    console.warn("Laptop fingerprint sensor error:", err);
-    if (err.name === 'NotAllowedError') {
-      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: bold;">⚠️ Verification Cancelled: Fingerprint touch was cancelled or timed out. Place your finger on the power button sensor and try again.</span>`;
-    } else {
-      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: bold;">⚠️ Hardware Notice: ${err.message || 'Laptop biometric device error'}. You can also use the External AS608 option.</span>`;
-    }
+    statusText.innerHTML = <span style="color: var(--accent-rose);">Sensor scan incomplete. Try again.</span>;
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
-// Trigger External AS608 UART Optical Sensor
 async function triggerAS608SensorScan() {
   audio.beep(750, 0.08);
   const statusText = document.getElementById('fingerprint-status-text');
@@ -399,8 +356,8 @@ async function triggerAS608SensorScan() {
   }
   if (btn) btn.disabled = true;
 
-  statusText.innerHTML = `<span style="color: #38bdf8;">Polling AS608 optical sensor (/dev/ttyUSB0 or serial)...</span>`;
-  if (subtext) subtext.innerText = "Place finger firmly on external optical glass window...";
+  statusText.innerHTML = <span style="color: #38bdf8;">Polling optical sensor...</span>;
+  if (subtext) subtext.innerText = "Place finger firmly on glass...";
 
   try {
     const resp = await fetch('/api/biometrics/fingerprint-verify', {
@@ -423,33 +380,25 @@ async function triggerAS608SensorScan() {
         graphic.classList.remove('scanning');
         graphic.classList.add('success');
       }
-      statusText.innerHTML = `<span style="color: #34d399; font-weight: bold;">✓ MATCH_SUCCESS: AS608 optical minutiae verified (Confidence: ${ver.score}%)</span>`;
+      statusText.innerHTML = <span style="color: #34d399; font-weight: bold;">✓ FINGERPRINT VERIFIED (\%)</span>;
       setTimeout(async () => {
         await unlockBallot();
-      }, 900);
+      }, 800);
     } else {
       audio.errorTone();
       if (graphic) graphic.classList.remove('scanning');
-      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;">MATCH_FAIL: ${ver.message}</span>`;
+      statusText.innerHTML = <span style="color: var(--accent-rose);">\</span>;
     }
   } catch (err) {
     audio.errorTone();
     if (graphic) graphic.classList.remove('scanning');
-    statusText.innerText = "AS608 UART communication error.";
+    statusText.innerText = "Sensor communication error.";
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
-// -------------------------------------------------------------
-// STEP 4: Ballot Candidate Selection & Authorization
-// -------------------------------------------------------------
 async function unlockBallot() {
-  const statusText = document.getElementById('fingerprint-status-text');
-  if (statusText) {
-    statusText.innerHTML = `<span style="color: #38bdf8;">Unlocking Secret Ballot (Dual-Biometrics Verified)...</span>`;
-  }
-
   try {
     const resp = await fetch('/api/ballot/authorize', {
       method: 'POST',
@@ -460,7 +409,7 @@ async function unlockBallot() {
     const data = await resp.json();
     if (!resp.ok) {
       audio.errorTone();
-      alert(data.detail?.message || "Dual-biometric authorization rejected.");
+      alert(data.detail?.message || "Authorization rejected.");
       setScreenState(1);
       return;
     }
@@ -469,10 +418,9 @@ async function unlockBallot() {
     KioskState.candidates = data.candidates;
 
     renderCandidates(data.candidates);
-    setScreenState(4); // Advance to Candidate Ballot screen!
+    setScreenState(4);
   } catch (err) {
-    console.error("Error unlocking ballot:", err);
-    alert("Error initializing ballot access.");
+    alert("Error initializing ballot.");
   }
 }
 
@@ -484,16 +432,16 @@ function renderCandidates(candidates) {
   candidates.forEach(cand => {
     const card = document.createElement('div');
     card.className = 'candidate-card';
-    card.innerHTML = `
+    card.innerHTML = 
       <div style="display: flex; align-items: center;">
-        <div class="cand-symbol-box">${cand.symbol}</div>
+        <div class="cand-symbol-box">\</div>
         <div class="cand-info">
-          <h3>${cand.name}</h3>
-          <p>${cand.party}</p>
+          <h3>\</h3>
+          <p>\</p>
         </div>
       </div>
-      <button class="vote-press-btn" onclick="openVoteConfirmation('${cand.id}')">VOTE [TOUCH]</button>
-    `;
+      <button class="vote-press-btn" onclick="openVoteConfirmation('\')">SELECT</button>
+    ;
     container.appendChild(card);
   });
 }
@@ -524,7 +472,7 @@ async function executeCastVote() {
   const confirmBtn = document.getElementById('btn-confirm-vote');
   if (confirmBtn) {
     confirmBtn.disabled = true;
-    confirmBtn.innerText = "Signing & Casting...";
+    confirmBtn.innerText = "Recording...";
   }
 
   try {
@@ -541,72 +489,52 @@ async function executeCastVote() {
     const data = await resp.json();
     if (!resp.ok) {
       audio.errorTone();
-      alert(data.detail?.message || "Transaction broadcast failed.");
+      alert(data.detail?.message || "Vote recording failed.");
       if (confirmBtn) {
         confirmBtn.disabled = false;
-        confirmBtn.innerText = "CONFIRM & CAST BALLOT";
+        confirmBtn.innerText = "CONFIRM VOTE";
       }
       return;
     }
 
     closeVoteConfirmation();
     showConfirmationReceipt(data.receipt);
-    setScreenState(5); // Advance to Receipt screen!
+    setScreenState(5);
   } catch (err) {
     audio.errorTone();
-    alert("Blockchain dispatch failed: Check local Web3 network.");
+    alert("Vote recording error.");
     if (confirmBtn) {
       confirmBtn.disabled = false;
-      confirmBtn.innerText = "CONFIRM & CAST BALLOT";
+      confirmBtn.innerText = "CONFIRM VOTE";
     }
   }
 }
 
-// -------------------------------------------------------------
-// STEP 5: VVPAT Cryptographic Confirmation Receipt
-// -------------------------------------------------------------
 function showConfirmationReceipt(receipt) {
   audio.successChord();
-  document.getElementById('rcpt-candidate').innerText = `${receipt.symbol} ${receipt.candidate_name}`;
+  document.getElementById('rcpt-candidate').innerText = \ \;
   document.getElementById('rcpt-party').innerText = receipt.party;
   document.getElementById('rcpt-timestamp').innerText = new Date(receipt.timestamp * 1000).toLocaleString();
   document.getElementById('rcpt-nonce').innerText = receipt.ballot_nonce;
   document.getElementById('rcpt-hash').innerText = receipt.salted_voter_hash;
   document.getElementById('rcpt-zkproof').innerText = receipt.zk_proof_receipt;
   document.getElementById('rcpt-status').innerText = receipt.ledger_status;
-
-  // Clear any previous timer completely: Voter stays on receipt screen until they choose to exit
-  if (KioskState.autoResetTimer) {
-    clearInterval(KioskState.autoResetTimer);
-    KioskState.autoResetTimer = null;
-  }
 }
 
 function resetKioskForNextVoter() {
   audio.beep(550, 0.08);
-  if (KioskState.autoResetTimer) {
-    clearInterval(KioskState.autoResetTimer);
-    KioskState.autoResetTimer = null;
-  }
   KioskState.activeEpic = '';
   KioskState.voterData = null;
   KioskState.ephemeralToken = null;
   KioskState.selectedCandidate = null;
-  sensorContactEstablished = false;
-  isSensorTouchActive = false;
 
   epicInput.value = '';
   showEpicError('');
 
-  // Reset graphics and progress
   const graphic = document.getElementById('scanner-target-graphic');
   if (graphic) {
-    graphic.classList.remove('scanning', 'success', 'touch-active', 'shake-highlight');
+    graphic.classList.remove('scanning', 'success', 'shake-highlight');
   }
-  const progressFill = document.getElementById('contact-progress-fill');
-  const progressText = document.getElementById('contact-percent-text');
-  if (progressFill) progressFill.style.width = '0%';
-  if (progressText) progressText.innerText = '0%';
 
   const btnLaptop = document.getElementById('btn-scan-laptop-fp');
   if (btnLaptop) btnLaptop.disabled = false;
@@ -615,35 +543,29 @@ function resetKioskForNextVoter() {
 
   const fpStatus = document.getElementById('fingerprint-status-text');
   if (fpStatus) {
-    fpStatus.innerText = "Touch your laptop power button / fingerprint sensor";
+    fpStatus.innerText = "Touch fingerprint sensor";
   }
 
   const subtext = document.getElementById('fingerprint-subtext');
   if (subtext) {
-    subtext.innerText = "Active Hardware: Built-in Physical Biometric Sensor (Windows Hello Platform Authenticator)";
+    subtext.innerText = "Physical Biometric Sensor";
   }
 
   setScreenState(1);
 }
 
-// Check hardware diagnostic on load
 async function checkSystemDiagnostic() {
   try {
     const resp = await fetch('/api/system/status');
     const data = await resp.json();
     const as608Badge = document.getElementById('badge-as608-status');
     if (as608Badge && data.hardware?.as608_fingerprint_scanner) {
-      const mode = data.hardware.as608_fingerprint_scanner.active_mode;
-      as608Badge.innerText = `AS608: ${mode}`;
+      as608Badge.innerText = AS608: READY;
     }
-  } catch (e) {
-    console.warn("System diagnostic unreachable", e);
-  }
+  } catch (e) {}
 }
 
-// Initialise
 window.addEventListener('DOMContentLoaded', () => {
   setScreenState(1);
   checkSystemDiagnostic();
-  initSensorTouchListeners();
 });

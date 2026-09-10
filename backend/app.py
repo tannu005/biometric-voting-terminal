@@ -1,10 +1,3 @@
-"""
-FastAPI Air-Gapped Kiosk Application Server
-Coordinates Kiosk State Machine, Real-time MJPEG Video Feed,
-Dual-Biometric Verification (Face + Fingerprint),
-and Cryptographically Decoupled Ballot Dispatch to Web3 Smart Contracts.
-"""
-
 import os
 import sys
 import json
@@ -17,7 +10,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Add root directory to sys.path for internal imports
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
@@ -27,16 +19,14 @@ from biometrics.face_verify import face_pipeline
 from biometrics.fusion_engine import fusion_engine
 from backend.crypto_utils import crypto_engine
 
-logger = logging.getLogger("Kiosk_Server")
+logger = logging.getLogger("server")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 app = FastAPI(
-    title="Air-Gapped Hardware-Enforced Biometric Voting Kiosk",
-    description="Dual-Biometric Verification Terminal with Cryptographic Ledger Decoupling",
-    version="2.0.0"
+    title="Biometric Voting Terminal",
+    version="1.0.0"
 )
 
-# Enable CORS for external touch displays or mobile browsers on local network
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,7 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files and voter photos
 STATIC_DIR = os.path.join(ROOT_DIR, "frontend", "static")
 VOTER_DB_DIR = os.path.join(ROOT_DIR, "data", "voter_db")
 os.makedirs(STATIC_DIR, exist_ok=True)
@@ -54,7 +43,6 @@ os.makedirs(VOTER_DB_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/voter_db", StaticFiles(directory=VOTER_DB_DIR), name="voter_db")
 
-# In-memory Voter & Candidate stores
 VOTERS_FILE = os.path.join(ROOT_DIR, "data", "voters.json")
 CANDIDATES_FILE = os.path.join(ROOT_DIR, "data", "candidates.json")
 
@@ -71,7 +59,6 @@ def load_candidates() -> list:
             return json.load(f)
     return []
 
-# ----------------- Request / Response Models -----------------
 class VoterLookupRequest(BaseModel):
     epic: str
 
@@ -91,21 +78,16 @@ class CastVoteRequest(BaseModel):
     candidate_id: str
     epic: str
 
-
-# ----------------- API Endpoints -----------------
-
 @app.get("/", response_class=HTMLResponse)
 async def serve_kiosk_ui():
-    """Serves the primary Kiosk voting interface HTML."""
     html_path = os.path.join(ROOT_DIR, "frontend", "index.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
-    return HTMLResponse(content="<h2>Kiosk UI loading error: index.html not found</h2>")
+    return HTMLResponse(content="<h2>Terminal UI not found</h2>")
 
 @app.get("/video_feed")
 async def video_feed():
-    """Streams live MJPEG camera feed with real-time biometric HUD overlay."""
     if os.environ.get("VERCEL") or not face_pipeline.is_camera_available():
         return Response(content=b"", status_code=204)
     return StreamingResponse(
@@ -115,10 +97,6 @@ async def video_feed():
 
 @app.post("/api/voter/lookup")
 async def voter_lookup(req: VoterLookupRequest):
-    """
-    Step 1: Validates Voter EPIC ID.
-    Checks eligibility, electoral roll status, and double-voting ledger history.
-    """
     epic = req.epic.strip().upper()
     voters = load_voters()
 
@@ -129,21 +107,16 @@ async def voter_lookup(req: VoterLookupRequest):
         )
 
     voter = voters[epic]
-
     if not voter.get("is_eligible", True):
         raise HTTPException(
             status_code=403,
-            detail={"error": "INELIGIBLE_VOTER", "message": "Voter marked ineligible by Election Commission."}
+            detail={"error": "INELIGIBLE_VOTER", "message": "Voter marked ineligible."}
         )
 
-    # Double-voting prevention check on cryptographic ledger
     if crypto_engine.check_has_voted(epic):
         raise HTTPException(
             status_code=409,
-            detail={
-                "error": "ALREADY_VOTED",
-                "message": "Double-voting rejected: Salted hash for this EPIC already exists on immutable ledger."
-            }
+            detail={"error": "ALREADY_VOTED", "message": "Double-voting rejected: Salted hash already exists."}
         )
 
     slot = voter.get("fingerprint_slot", 1)
@@ -162,9 +135,6 @@ async def voter_lookup(req: VoterLookupRequest):
 
 @app.post("/api/biometrics/face-verify")
 async def verify_face(req: FaceVerifyRequest):
-    """
-    Step 2: Executes live snapshot acquisition and facial biometric matching.
-    """
     epic = req.epic.strip().upper()
     result = fusion_engine.process_facial_verification(epic, force_mock=req.force_mock)
     status_summary = fusion_engine.get_session_status(epic)
@@ -175,10 +145,6 @@ async def verify_face(req: FaceVerifyRequest):
 
 @app.post("/api/biometrics/fingerprint-verify")
 async def verify_fingerprint(req: FingerprintVerifyRequest):
-    """
-    Step 3: Interrogates laptop physical fingerprint sensor (Windows Hello / Power Button)
-    or external AS608 optical fingerprint scanner over UART.
-    """
     epic = req.epic.strip().upper()
     if req.method == "LAPTOP_HARDWARE_FINGERPRINT":
         result = fusion_engine.process_laptop_fingerprint(epic, req.credential)
@@ -196,16 +162,11 @@ async def verify_fingerprint(req: FingerprintVerifyRequest):
 
 @app.get("/api/biometrics/session-status/{epic}")
 async def get_session_status(epic: str):
-    """Returns real-time consensus validation status for active voter."""
     epic = epic.strip().upper()
     return fusion_engine.get_session_status(epic)
 
 @app.post("/api/ballot/authorize")
 async def authorize_ballot(req: VoterLookupRequest):
-    """
-    Step 4: Unlocks Ballot upon Dual-Biometric Consensus.
-    Generates Ephemeral Ballot Access Token and returns candidate list.
-    """
     epic = req.epic.strip().upper()
     status_summary = fusion_engine.get_session_status(epic)
 
@@ -231,15 +192,11 @@ async def authorize_ballot(req: VoterLookupRequest):
 
 @app.post("/api/ballot/cast")
 async def cast_vote(req: CastVoteRequest):
-    """
-    Step 5: Casts Vote with Zero Clear-Text Identity Transmission.
-    Consumes ephemeral token, writes salted hash to ledger, and broadcasts to Web3 module.
-    """
     salted_voter_hash = crypto_engine.validate_and_consume_token(req.ephemeral_token)
     if not salted_voter_hash:
         raise HTTPException(
             status_code=401,
-            detail={"error": "INVALID_TOKEN", "message": "Ephemeral ballot authorization token expired or invalid."}
+            detail={"error": "INVALID_TOKEN", "message": "Ephemeral authorization token expired or invalid."}
         )
 
     candidates = load_candidates()
@@ -275,12 +232,11 @@ async def cast_vote(req: CastVoteRequest):
             "zk_proof_receipt": ledger_result["zk_proof_receipt"],
             "ledger_status": ledger_result["ledger_status"]
         },
-        "message": "Vote successfully cast and broadcast to immutable blockchain ledger."
+        "message": "Vote successfully cast and recorded."
     }
 
 @app.get("/api/system/status")
 async def system_status():
-    """Diagnostic health check for hardware modules and services."""
     return {
         "status": "OPERATIONAL",
         "terminal_id": "KIOSK-TERMINAL-01",
@@ -306,9 +262,8 @@ async def system_status():
 
 @app.post("/api/admin/reset")
 async def admin_reset():
-    """Administrative reset endpoint to clear test vote locks."""
     crypto_engine.casted_hashes.clear()
     fusion_engine.active_sessions.clear()
     crypto_engine.active_ephemeral_tokens.clear()
-    logger.info("Administrative reset executed: cleared test voter state.")
-    return {"success": True, "message": "Terminal voting state reset for test cycle."}
+    logger.info("Admin reset executed.")
+    return {"success": True, "message": "Terminal state reset."}

@@ -1,6 +1,6 @@
 # Patent Application & Technical Claims Specification
 **Title:** AIR-GAPPED HARDWARE-ENFORCED MULTIMODAL BIOMETRIC VOTING TERMINAL WITH CRYPTOGRAPHIC IDENTITY-BALLOT DECOUPLING AND IMMUTABLE LEDGER VERIFICATION  
-**Lead Architect & Inventor:** Tannu  
+**Inventor:** Tannu  
 **Classification:** G07C 13/00 (Voting machines), H04L 9/32 (Cryptographic authentication), G06F 21/32 (Biometric identity verification)  
 
 ---
