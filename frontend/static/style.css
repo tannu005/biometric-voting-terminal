@@ -1,0 +1,773 @@
+:root {
+  --bg-main: #0b0f19;
+  --bg-card: #131b2e;
+  --bg-card-hover: #1a253e;
+  --border-color: #233252;
+  --border-focus: #3b82f6;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent-cyan: #06b6d4;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* Header */
+.terminal-header {
+  background: rgba(19, 27, 46, 0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.emblem {
+  font-size: 28px;
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  border: 1px solid #334155;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.brand-text h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+}
+
+.brand-text p {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.system-status-badges {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #334155;
+  color: #cbd5e1;
+}
+
+.badge.success {
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.badge.pulse::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* Stepper Progress Bar */
+.stepper-container {
+  max-width: 900px;
+  margin: 18px auto 6px auto;
+  width: 100%;
+  padding: 0 20px;
+}
+
+.stepper {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+}
+
+.stepper::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 30px;
+  right: 30px;
+  height: 3px;
+  background: #1e293b;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.step-item {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #1e293b;
+  border: 2px solid #334155;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #64748b;
+  transition: all 0.3s ease;
+}
+
+.step-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.step-item.active .step-circle {
+  background: #2563eb;
+  border-color: #60a5fa;
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.6);
+}
+
+.step-item.active .step-title {
+  color: #93c5fd;
+}
+
+.step-item.completed .step-circle {
+  background: #059669;
+  border-color: #34d399;
+  color: #ffffff;
+}
+
+.step-item.completed .step-title {
+  color: #34d399;
+}
+
+/* Main Container */
+.kiosk-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.screen-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  max-width: 960px;
+  width: 100%;
+  padding: 36px 40px;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+  position: relative;
+  overflow: hidden;
+  display: none; /* hidden until active */
+}
+
+.screen-card.active {
+  display: block;
+  animation: fadeIn 0.35s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.screen-title-area {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.screen-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.screen-desc {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+/* STEP 1: EPIC Input */
+.epic-input-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.input-box-wrapper {
+  width: 100%;
+  max-width: 480px;
+  position: relative;
+}
+
+.input-epic {
+  width: 100%;
+  background: #0b1120;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px 20px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #38bdf8;
+  text-align: center;
+  text-transform: uppercase;
+  outline: none;
+  transition: all 0.25s ease;
+}
+
+.input-epic:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+}
+
+.quick-test-voters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  max-width: 600px;
+}
+
+.quick-chip {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #cbd5e1;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-chip:hover {
+  background: #334155;
+  color: #ffffff;
+  border-color: #64748b;
+}
+
+/* Digital On-Screen Keypad */
+.touch-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-width: 320px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.key-btn {
+  background: #1a253e;
+  border: 1px solid #2d3e64;
+  color: #f1f5f9;
+  font-size: 1.3rem;
+  font-weight: 600;
+  padding: 14px 0;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.key-btn:active {
+  background: #2563eb;
+  transform: scale(0.96);
+}
+
+/* Primary Action Buttons */
+.btn-primary {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: none;
+  color: #ffffff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: 16px 36px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.5);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -5px rgba(59, 130, 246, 0.6);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* STEP 2: Facial Recognition HUD */
+.face-hud-layout {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 28px;
+  align-items: center;
+}
+
+.video-frame-box {
+  position: relative;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 2px solid #233252;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  aspect-ratio: 4 / 3;
+}
+
+.video-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.video-overlay-elements {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.voter-profile-panel {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.voter-photo-preview {
+  width: 90px;
+  height: 90px;
+  border-radius: 12px;
+  border: 2px solid #38bdf8;
+  object-fit: cover;
+  background: #1e293b;
+}
+
+.metric-bar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.progress-track {
+  height: 10px;
+  background: #1e293b;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #38bdf8, #10b981);
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+
+/* STEP 3: Fingerprint Scanner Prompt */
+.fingerprint-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.scanner-graphic {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #172554 0%, #0b1120 70%);
+  border: 3px solid #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 35px rgba(37, 99, 235, 0.35);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  touch-action: none;
+}
+
+.scanner-graphic:hover {
+  border-color: #38bdf8;
+  box-shadow: 0 0 45px rgba(56, 189, 248, 0.45);
+  transform: scale(1.02);
+}
+
+.scanner-graphic.touch-active {
+  border-color: #38bdf8;
+  background: radial-gradient(circle, #1e3a8a 0%, #0b1120 80%);
+  box-shadow: 0 0 50px rgba(56, 189, 248, 0.7);
+  transform: scale(0.97);
+}
+
+.scanner-touch-instruction {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.8px;
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 6px 14px;
+  border-radius: 9999px;
+}
+
+.touch-pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #38bdf8;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: pulse-dot 1.2s infinite;
+}
+
+.scanner-graphic.shake-highlight {
+  animation: shakeAlert 0.4s ease-in-out;
+  border-color: #f43f5e !important;
+  box-shadow: 0 0 30px rgba(244, 63, 94, 0.6) !important;
+}
+
+@keyframes shakeAlert {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+.scanner-icon {
+  font-size: 78px;
+  color: #60a5fa;
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.scanner-laser {
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 4px;
+  background: #38bdf8;
+  box-shadow: 0 0 14px #38bdf8, 0 0 24px #38bdf8;
+  border-radius: 50%;
+  animation: scanLaser 1.5s infinite ease-in-out;
+  display: none;
+}
+
+.scanner-graphic.scanning .scanner-laser {
+  display: block;
+}
+
+.scanner-graphic.scanning .scanner-icon {
+  color: #38bdf8;
+}
+
+.scanner-graphic.success {
+  border-color: #10b981;
+  box-shadow: 0 0 45px rgba(16, 185, 129, 0.7);
+}
+
+.scanner-graphic.success .scanner-icon {
+  color: #10b981;
+}
+
+@keyframes scanLaser {
+  0% { top: 15%; opacity: 0.2; }
+  50% { top: 85%; opacity: 1; }
+  100% { top: 15%; opacity: 0.2; }
+}
+
+/* STEP 4: Ballot Selection */
+.candidates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.candidate-card {
+  background: #0f172a;
+  border: 2px solid #1e293b;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.candidate-card:hover {
+  background: #172554;
+  border-color: #3b82f6;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
+}
+
+.candidate-card.selected {
+  border-color: #10b981;
+  background: #064e3b;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+.cand-symbol-box {
+  font-size: 38px;
+  width: 64px;
+  height: 64px;
+  background: #1e293b;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+}
+
+.cand-info h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.cand-info p {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.vote-press-btn {
+  background: #2563eb;
+  border: none;
+  color: white;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.vote-press-btn:hover {
+  background: #1d4ed8;
+}
+
+/* Modal Confirmation */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal-card {
+  background: #131b2e;
+  border: 1px solid #334155;
+  border-radius: 20px;
+  padding: 32px;
+  max-width: 480px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+}
+
+/* STEP 5: VVPAT Cryptographic Receipt */
+.receipt-wrapper {
+  background: #f8fafc;
+  color: #0f172a;
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 460px;
+  margin: 0 auto 24px auto;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+  font-family: 'Courier New', Courier, monospace;
+  position: relative;
+}
+
+.receipt-wrapper::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: radial-gradient(circle, transparent, transparent 50%, #f8fafc 50%, #f8fafc 100%);
+  background-size: 12px 12px;
+}
+
+.receipt-header {
+  text-align: center;
+  border-bottom: 2px dashed #94a3b8;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.receipt-row.bold {
+  font-weight: bold;
+  font-size: 0.95rem;
+}
+
+.hash-box {
+  word-break: break-all;
+  background: #e2e8f0;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  margin-top: 4px;
+}
+
+/* Footer */
+.terminal-footer {
+  background: #090d16;
+  border-top: 1px solid #1e293b;
+  padding: 10px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .face-hud-layout {
+    grid-template-columns: 1fr;
+  }
+  .terminal-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .system-status-badges {
+    flex-wrap: wrap;
+  }
+}
+
+/* Official VVPAT Paper Print Format */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .terminal-header, .stepper-container, .terminal-footer, .receipt-actions-panel, button, #btn-scan-fingerprint, .modal-backdrop {
+    display: none !important;
+  }
+  .kiosk-main {
+    padding: 0 !important;
+  }
+  .screen-card {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  .screen-title-area {
+    display: none !important;
+  }
+  .receipt-wrapper {
+    box-shadow: none !important;
+    border: 2px solid #000000 !important;
+    margin: 20px auto !important;
+    max-width: 100% !important;
+    width: 380px !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+  .hash-box {
+    background: #f1f5f9 !important;
+    color: #000000 !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+}

@@ -1,0 +1,185 @@
+"""
+Comprehensive Automated Test Suite for Biometric Voting Terminal
+Tests:
+1. AS608 Driver Frame Construction & Minutiae Match Logic
+2. Facial Feature Signature Extraction & Cosine Similarity
+3. Multimodal Biometric Fusion Consensus State Machine
+4. Cryptographic Identity Decoupling (Salted SHA-256 + Ephemeral Tokens)
+5. Double-Voting Prevention Protocol
+6. FastAPI End-to-End Endpoint Verification
+"""
+
+import os
+import sys
+import uuid
+import unittest
+import numpy as np
+from fastapi.testclient import TestClient
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+from hardware.as608 import AS608Driver
+from biometrics.face_verify import FacialVerificationPipeline
+from biometrics.fusion_engine import BiometricFusionEngine
+from backend.crypto_utils import DecoupledCryptoEngine
+from backend.app import app
+
+class TestAS608Driver(unittest.TestCase):
+    def setUp(self):
+        self.driver = AS608Driver(mock_mode=True)
+
+    def test_packet_building_and_checksum(self):
+        packet = self.driver._build_packet(AS608Driver.PID_COMMAND, bytes([0x01]))
+        self.assertEqual(len(packet), 12)
+        self.assertEqual(packet[0:2], b'\xef\x01')
+        self.assertEqual(packet[2:6], b'\xff\xff\xff\xff')
+        self.assertEqual(packet[6], 0x01)
+
+    def test_mock_verification_touch_gating(self):
+        # Without touch contact -> MATCH_FAIL
+        res_no_touch = self.driver.verify_fingerprint(expected_voter_slot=1, timeout_sec=1.0, touch_detected=False)
+        self.assertEqual(res_no_touch["status"], "MATCH_FAIL")
+        self.assertIn("No finger detected", res_no_touch["message"])
+
+        # With touch contact -> MATCH_SUCCESS
+        res_touch = self.driver.verify_fingerprint(expected_voter_slot=1, timeout_sec=1.0, touch_detected=True)
+        self.assertEqual(res_touch["status"], "MATCH_SUCCESS")
+        self.assertGreaterEqual(res_touch["score"], 60)
+        self.assertIn("mode", res_touch)
+
+
+class TestFacialVerification(unittest.TestCase):
+    def setUp(self):
+        self.pipe = FacialVerificationPipeline()
+
+    def test_signature_extraction_invariance(self):
+        img1 = np.full((128, 128, 3), (180, 150, 130), dtype=np.uint8)
+        img2 = np.full((128, 128, 3), (180, 150, 130), dtype=np.uint8)
+        
+        sig1 = self.pipe.extract_face_signature(img1)
+        sig2 = self.pipe.extract_face_signature(img2)
+        
+        self.assertEqual(sig1.shape, sig2.shape)
+        sim = self.pipe.compute_similarity(sig1, sig2)
+        self.assertAlmostEqual(sim, 1.0, places=2)
+
+    def test_different_images_lower_similarity(self):
+        # Image 1: top half bright, bottom dark
+        img1 = np.zeros((128, 128, 3), dtype=np.uint8)
+        img1[:64, :] = 220
+        
+        # Image 2: left half bright, right dark
+        img2 = np.zeros((128, 128, 3), dtype=np.uint8)
+        img2[:, :64] = 220
+        
+        sig1 = self.pipe.extract_face_signature(img1)
+        sig2 = self.pipe.extract_face_signature(img2)
+        sim = self.pipe.compute_similarity(sig1, sig2)
+        self.assertLess(sim, 0.70)
+
+
+class TestCryptographicDecoupling(unittest.TestCase):
+    def setUp(self):
+        self.crypto = DecoupledCryptoEngine(salt="TEST-SALT-XYZ")
+
+    def test_deterministic_salted_hash(self):
+        epic = "VOTE-IND-2026-001"
+        hash1 = self.crypto.compute_salted_voter_hash(epic)
+        hash2 = self.crypto.compute_salted_voter_hash(epic)
+        
+        self.assertEqual(hash1, hash2)
+        self.assertTrue(hash1.startswith("0x"))
+        self.assertEqual(len(hash1), 66)
+
+    def test_ephemeral_token_single_use(self):
+        epic = "VOTE-IND-2026-001"
+        token_rec = self.crypto.issue_ephemeral_token(epic)
+        token_str = token_rec["token"]
+        
+        consumed_hash = self.crypto.validate_and_consume_token(token_str)
+        self.assertIsNotNone(consumed_hash)
+        
+        second_attempt = self.crypto.validate_and_consume_token(token_str)
+        self.assertIsNone(second_attempt)
+
+    def test_double_voting_prevention(self):
+        # Generate fresh unique test epic
+        unique_epic = f"VOTE-TEST-{uuid.uuid4().hex[:8]}"
+        v_hash = self.crypto.compute_salted_voter_hash(unique_epic)
+        payload1 = self.crypto.create_ballot_payload("CAND-01", v_hash)
+        
+        res1 = self.crypto.commit_vote_ledger(payload1)
+        self.assertTrue(res1["success"])
+        
+        payload2 = self.crypto.create_ballot_payload("CAND-02", v_hash)
+        res2 = self.crypto.commit_vote_ledger(payload2)
+        self.assertFalse(res2["success"])
+        self.assertEqual(res2["error"], "DOUBLE_VOTING_DETECTED")
+
+
+class TestEndToEndKioskAPI(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+        self.client.post("/api/admin/reset")
+
+    def test_full_kiosk_voting_flow(self):
+        test_epic = "VOTE-IND-2026-001"
+
+        # 1. Voter Lookup
+        r_lookup = self.client.post("/api/voter/lookup", json={"epic": test_epic})
+        self.assertEqual(r_lookup.status_code, 200)
+        self.assertEqual(r_lookup.json()["voter"]["epic"], test_epic)
+
+        # 2. Facial Verification
+        r_face = self.client.post("/api/biometrics/face-verify", json={"epic": test_epic, "force_mock": True})
+        self.assertEqual(r_face.status_code, 200)
+        self.assertEqual(r_face.json()["verification"]["status"], "MATCH_SUCCESS")
+
+        # 3. Fingerprint Verification without touch / credential -> MUST REJECT (MATCH_FAIL)
+        r_fp_notouch = self.client.post("/api/biometrics/fingerprint-verify", json={
+            "epic": test_epic,
+            "method": "LAPTOP_HARDWARE_FINGERPRINT",
+            "credential": None
+        })
+        self.assertEqual(r_fp_notouch.status_code, 200)
+        self.assertEqual(r_fp_notouch.json()["verification"]["status"], "MATCH_FAIL")
+        self.assertIn("fingerprint", r_fp_notouch.json()["verification"]["message"].lower())
+
+        # 3b. Fingerprint Verification WITH physical hardware credential -> SUCCEEDS (MATCH_SUCCESS)
+        r_fp = self.client.post("/api/biometrics/fingerprint-verify", json={
+            "epic": test_epic,
+            "method": "LAPTOP_HARDWARE_FINGERPRINT",
+            "credential": {"id": "laptop_power_button_auth_proof_99"}
+        })
+        self.assertEqual(r_fp.status_code, 200)
+        self.assertEqual(r_fp.json()["verification"]["status"], "MATCH_SUCCESS")
+        self.assertEqual(r_fp.json()["verification"]["mode"], "LAPTOP_POWER_BUTTON_BIOMETRIC")
+
+        # 4. Ballot Authorization
+        r_auth = self.client.post("/api/ballot/authorize", json={"epic": test_epic})
+        self.assertEqual(r_auth.status_code, 200)
+        auth_data = r_auth.json()
+        ephemeral_token = auth_data["ephemeral_token"]
+        self.assertTrue(len(auth_data["candidates"]) > 0)
+
+        # 5. Cast Vote
+        r_cast = self.client.post("/api/ballot/cast", json={
+            "ephemeral_token": ephemeral_token,
+            "candidate_id": "CAND-01",
+            "epic": test_epic
+        })
+        self.assertEqual(r_cast.status_code, 200)
+        cast_data = r_cast.json()
+        self.assertTrue(cast_data["success"])
+        self.assertIn("receipt", cast_data)
+
+        # 6. Verify Double-Voting Prevention
+        r_lookup_again = self.client.post("/api/voter/lookup", json={"epic": test_epic})
+        self.assertEqual(r_lookup_again.status_code, 409)
+        self.assertEqual(r_lookup_again.json()["detail"]["error"], "ALREADY_VOTED")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

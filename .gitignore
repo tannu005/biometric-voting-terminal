@@ -1,0 +1,12 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+.vercel/
+.system_generated/
+*.log
+data/audit_ledger.jsonl
+.vercel

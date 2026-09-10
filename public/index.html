@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Air-Gapped Dual-Biometric Voting Kiosk</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Top System Bar -->
+  <header class="terminal-header">
+    <div class="brand-wrapper">
+      <div class="emblem">🗳️</div>
+      <div class="brand-text">
+        <h1>DEMOCRACY TERMINAL // AIR-GAPPED</h1>
+        <p>Hardware-Enforced Dual-Biometric Blockchain Voting Terminal</p>
+      </div>
+    </div>
+
+    <div class="system-status-badges">
+      <div class="badge pulse success" id="badge-airgap">AIR-GAP: ENFORCED</div>
+      <div class="badge" id="badge-as608-status">AS608: READY</div>
+      <div class="badge success" id="badge-camera-status">CV CAMERA: ACTIVE</div>
+      <div class="badge" id="badge-terminal-id">BOOTH: RPI-NODE-01</div>
+    </div>
+  </header>
+
+  <!-- Stepper Progression Bar -->
+  <div class="stepper-container">
+    <div class="stepper">
+      <div class="step-item active" id="step-indicator-1">
+        <div class="step-circle">1</div>
+        <div class="step-title">EPIC Card</div>
+      </div>
+      <div class="step-item" id="step-indicator-2">
+        <div class="step-circle">2</div>
+        <div class="step-title">Facial HUD</div>
+      </div>
+      <div class="step-item" id="step-indicator-3">
+        <div class="step-circle">3</div>
+        <div class="step-title">Fingerprint</div>
+      </div>
+      <div class="step-item" id="step-indicator-4">
+        <div class="step-circle">4</div>
+        <div class="step-title">Ballot Roster</div>
+      </div>
+      <div class="step-item" id="step-indicator-5">
+        <div class="step-circle">5</div>
+        <div class="step-title">Receipt VVPAT</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Kiosk Body -->
+  <main class="kiosk-main">
+
+    <!-- ======================================================= -->
+    <!-- SCREEN 1: EPIC Input & Voter Roll Verification -->
+    <!-- ======================================================= -->
+    <section class="screen-card active" id="screen-epic">
+      <div class="screen-title-area">
+        <h2 class="screen-title">Voter Identification</h2>
+        <p class="screen-desc">Insert or type your official Elector Photo Identity Card (EPIC) Number</p>
+      </div>
+
+      <div class="epic-input-container">
+        <div class="input-box-wrapper">
+          <input type="text" id="epic-input-field" class="input-epic" placeholder="VOTE-IND-2026-001" autocomplete="off" spellcheck="false">
+        </div>
+
+        <div id="epic-error-msg" style="color: var(--accent-rose); font-size: 0.88rem; font-weight: 600; min-height: 20px;"></div>
+
+        <!-- Quick Voter Demo Selector Chips -->
+        <div style="text-align: center;">
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Registered Constituency Test Voters (Click to Auto-Fill):</p>
+          <div class="quick-test-voters">
+            <button class="quick-chip" onclick="selectQuickEpic('VOTE-IND-2026-001')">👤 Aarav Sharma (001)</button>
+            <button class="quick-chip" onclick="selectQuickEpic('VOTE-IND-2026-002')">👤 Priya Patel (002)</button>
+            <button class="quick-chip" onclick="selectQuickEpic('VOTE-IND-2026-003')">👤 Vikram Malhotra (003)</button>
+            <button class="quick-chip" onclick="selectQuickEpic('VOTE-IND-2026-004')">👤 Ananya Sen (004)</button>
+          </div>
+        </div>
+
+        <!-- Touch Screen Virtual Keypad -->
+        <div class="touch-keypad">
+          <button class="key-btn" onclick="appendEpicChar('1')">1</button>
+          <button class="key-btn" onclick="appendEpicChar('2')">2</button>
+          <button class="key-btn" onclick="appendEpicChar('3')">3</button>
+          <button class="key-btn" onclick="appendEpicChar('4')">4</button>
+          <button class="key-btn" onclick="appendEpicChar('5')">5</button>
+          <button class="key-btn" onclick="appendEpicChar('6')">6</button>
+          <button class="key-btn" onclick="appendEpicChar('7')">7</button>
+          <button class="key-btn" onclick="appendEpicChar('8')">8</button>
+          <button class="key-btn" onclick="appendEpicChar('9')">9</button>
+          <button class="key-btn" style="color: var(--accent-rose);" onclick="clearEpicInput()">CLR</button>
+          <button class="key-btn" onclick="appendEpicChar('0')">0</button>
+          <button class="key-btn" style="color: var(--accent-amber);" onclick="backspaceEpicInput()">⌫</button>
+        </div>
+
+        <button class="btn-primary" id="btn-submit-epic" onclick="submitEpicLookup()">
+          Verify Voter Identity →
+        </button>
+      </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- SCREEN 2: Facial Recognition Visualizer & Liveness HUD -->
+    <!-- ======================================================= -->
+    <section class="screen-card" id="screen-face">
+      <div class="screen-title-area">
+        <h2 class="screen-title">Facial Biometric Authentication</h2>
+        <p class="screen-desc">Look directly into the optical camera sensor for real-time landmark & liveness alignment</p>
+      </div>
+
+      <div class="face-hud-layout">
+        <!-- Live Video Stream (Supports physical OpenCV stream or client browser camera on Vercel) -->
+        <div class="video-frame-box">
+          <video id="client-webcam-feed" autoplay playsinline muted style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 12px;"></video>
+          <img id="server-mjpeg-stream" src="/video_feed" class="video-stream" alt="Live Camera Feed with Biometric HUD">
+          <div class="video-overlay-elements">
+            <span class="badge pulse success" id="badge-cam-feed-status">CAMERA ACTIVE</span>
+            <span class="badge" id="face-scan-status">ALIGNING LANDMARKS</span>
+          </div>
+        </div>
+
+        <!-- Voter Match Panel -->
+        <div class="voter-profile-panel">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <img id="hud-voter-photo" src="" alt="Voter Photo" class="voter-photo-preview">
+            <div>
+              <h3 id="hud-voter-name" style="font-size: 1.15rem; font-weight: 700; color: #fff;">--</h3>
+              <p id="hud-voter-epic" style="font-size: 0.85rem; color: var(--accent-cyan); font-weight: 600;">--</p>
+              <p id="hud-voter-constituency" style="font-size: 0.75rem; color: var(--text-muted);">--</p>
+            </div>
+          </div>
+
+          <div class="metric-bar-group">
+            <div class="metric-header">
+              <span>Facial Similarity Score</span>
+              <span id="face-confidence-text" style="color: #34d399; font-weight: bold;">--%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="face-confidence-fill"></div>
+            </div>
+          </div>
+
+          <div style="background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 10px; border: 1px solid #1e293b;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span>Anti-Spoofing Liveness Check:</span>
+              <span style="color: #34d399; font-weight: bold;">PASS (Passive Micro-Motion)</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+              <span>Biometric Feature Engine:</span>
+              <span style="color: #60a5fa;">OpenCV / DeepFace</span>
+            </div>
+          </div>
+
+          <button class="btn-primary" id="btn-capture-face" style="width: 100%; justify-content: center;" onclick="triggerFaceVerify()">
+            Capture & Authenticate Face →
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- SCREEN 3: AS608 Optical Fingerprint Scanner Prompt -->
+    <!-- ======================================================= -->
+    <!-- ======================================================= -->
+    <!-- SCREEN 3: AS608 Optical Fingerprint Scanner Prompt -->
+    <!-- ======================================================= -->
+    <section class="screen-card" id="screen-fingerprint">
+      <div class="screen-title-area">
+        <h2 class="screen-title">Physical Fingerprint Verification</h2>
+        <p class="screen-desc">Second Modality: Place your physical finger on your laptop's fingerprint sensor (e.g. Power Button / Windows Hello)</p>
+      </div>
+
+      <div class="fingerprint-stage">
+        <!-- Sensor Graphic -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+          <div class="scanner-graphic" id="scanner-target-graphic" onclick="triggerLaptopPhysicalFingerprint()" title="Click to trigger laptop physical fingerprint reader">
+            <div class="scanner-laser"></div>
+            <div class="scanner-icon">🖑</div>
+          </div>
+          <div class="scanner-touch-instruction" id="sensor-instruction-badge">
+            <span class="touch-pulse-dot"></span>
+            HARDWARE READY: TOUCH LAPTOP POWER BUTTON SENSOR
+          </div>
+        </div>
+
+        <div style="text-align: center; max-width: 540px;">
+          <p id="fingerprint-status-text" style="font-size: 1.1rem; font-weight: 700; color: #93c5fd; margin-bottom: 8px;">
+            Touch your laptop power button / fingerprint sensor
+          </p>
+          <p id="fingerprint-subtext" style="font-size: 0.82rem; color: var(--text-muted);">
+            Active Hardware: Built-in Physical Biometric Sensor (Windows Hello Platform Authenticator)
+          </p>
+        </div>
+
+        <!-- Action Buttons: Primary Laptop Physical Fingerprint & External AS608 UART -->
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+          <button class="btn-primary" id="btn-scan-laptop-fp" onclick="triggerLaptopPhysicalFingerprint()" style="display: inline-flex; align-items: center; gap: 8px;">
+            <span>💻</span> Scan Laptop Fingerprint [Power Button]
+          </button>
+          <button class="btn-primary" id="btn-scan-as608-fp" onclick="triggerAS608SensorScan()" style="background: #1e293b; border: 1px solid #334155; color: #94a3b8; font-size: 0.9rem; box-shadow: none;">
+            <span>🔌</span> External AS608 Sensor (UART)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- SCREEN 4: Official Ballot Candidate Selection -->
+    <!-- ======================================================= -->
+    <section class="screen-card" id="screen-ballot">
+      <div class="screen-title-area">
+        <h2 class="screen-title">Official Secret Ballot</h2>
+        <p class="screen-desc">Touch the button corresponding to your chosen candidate or option</p>
+      </div>
+
+      <div class="candidates-grid" id="candidates-list-container">
+        <!-- Injected via JavaScript -->
+      </div>
+
+      <div style="text-align: center; font-size: 0.8rem; color: var(--text-muted);">
+        🔒 Ephemeral Token Active: Your vote is mathematically decoupled from your biometric identity.
+      </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- SCREEN 5: VVPAT Cryptographic Receipt & Confirmation -->
+    <!-- ======================================================= -->
+    <section class="screen-card" id="screen-confirm">
+      <div class="screen-title-area">
+        <h2 class="screen-title" style="color: #34d399;">✓ Vote Successfully Broadcast & Sealed</h2>
+        <p class="screen-desc">Your vote has been cryptographically confirmed and committed to the immutable blockchain ledger</p>
+      </div>
+
+      <!-- Digital VVPAT Paper Receipt -->
+      <div class="receipt-wrapper" id="printable-vvpat-receipt">
+        <div class="receipt-header">
+          <div style="font-size: 1.1rem; font-weight: bold; letter-spacing: 1px;">ELECTION COMMISSION OF INDIA</div>
+          <div style="font-size: 0.75rem; color: #475569;">OFFICIAL VVPAT CRYPTOGRAPHIC AUDIT RECEIPT</div>
+        </div>
+
+        <div class="receipt-row bold">
+          <span>SELECTED:</span>
+          <span id="rcpt-candidate">--</span>
+        </div>
+        <div class="receipt-row">
+          <span>PARTY:</span>
+          <span id="rcpt-party">--</span>
+        </div>
+        <div class="receipt-row">
+          <span>TIMESTAMP:</span>
+          <span id="rcpt-timestamp">--</span>
+        </div>
+        <div class="receipt-row">
+          <span>LEDGER STATUS:</span>
+          <span id="rcpt-status" style="font-weight: bold; color: #047857;">--</span>
+        </div>
+
+        <div style="border-top: 1px dashed #94a3b8; margin: 12px 0;"></div>
+
+        <div style="font-size: 0.72rem; font-weight: bold; color: #475569;">SALTED DETERMINISTIC VOTER HASH:</div>
+        <div class="hash-box" id="rcpt-hash">--</div>
+
+        <div style="font-size: 0.72rem; font-weight: bold; color: #475569; margin-top: 8px;">BALLOT NONCE & PROOF:</div>
+        <div class="hash-box" id="rcpt-nonce">--</div>
+        <div class="hash-box" id="rcpt-zkproof" style="margin-top: 4px;">--</div>
+
+        <div style="margin-top: 14px; text-align: center; font-size: 0.7rem; color: #64748b;">
+          * Zero identity data was sent or recorded on the blockchain ledger *
+        </div>
+      </div>
+
+      <!-- Receipt Control Bar: No abrupt auto-redirect -->
+      <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 16px;">
+        <div style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;">
+          <button class="btn-primary" style="background: #1e293b; border: 1px solid #475569; color: #f1f5f9; padding: 14px 22px; font-size: 0.95rem; box-shadow: none;" onclick="window.print()">
+            🖨️ Print / Save VVPAT Receipt
+          </button>
+          <button class="btn-primary" style="background: linear-gradient(135deg, #059669, #047857); padding: 14px 28px; font-size: 1rem;" onclick="resetKioskForNextVoter()">
+            Finish Voting & Next Citizen →
+          </button>
+        </div>
+        <p style="font-size: 0.85rem; color: #94a3b8; max-width: 520px;">
+          🔒 <strong>Audit Record Saved:</strong> Your receipt is permanently viewable above. When you are ready to leave the polling booth, click <strong>"Finish Voting & Next Citizen"</strong>.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Vote Confirmation Modal -->
+  <div class="modal-backdrop" id="vote-modal">
+    <div class="modal-card">
+      <div id="modal-cand-symbol" style="font-size: 64px; margin-bottom: 12px;">⚡</div>
+      <h3 id="modal-cand-name" style="font-size: 1.4rem; color: #fff; margin-bottom: 6px;">Candidate Name</h3>
+      <p id="modal-cand-party" style="font-size: 0.95rem; color: var(--accent-cyan); margin-bottom: 20px;">Party Name</p>
+
+      <div style="background: rgba(30, 41, 59, 0.6); padding: 14px; border-radius: 12px; margin-bottom: 24px; font-size: 0.85rem; color: #cbd5e1; text-align: left;">
+        ⚠️ <strong>Important Notice:</strong><br>
+        Once confirmed, your vote will be signed by the hardware terminal and broadcast to the smart contract. This action is final and mathematically irreversible.
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button style="background: #334155; border: none; color: #fff; padding: 14px 24px; border-radius: 10px; font-weight: 600; cursor: pointer;" onclick="closeVoteConfirmation()">
+          Cancel / Change
+        </button>
+        <button class="btn-primary" id="btn-confirm-vote" style="background: linear-gradient(135deg, #059669, #047857);" onclick="executeCastVote()">
+          CONFIRM & CAST BALLOT
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal Footer -->
+  <footer class="terminal-footer">
+    <div>AIR-GAPPED HARDWARE-ENFORCED BIOMETRIC TERMINAL • FIRMWARE v2.4.0</div>
+    <div>PATENT CLAIMS PENDING • IEEE 29115 LEVEL-4 COMPLIANT</div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

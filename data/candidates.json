@@ -1,0 +1,47 @@
+[
+  {
+    "id": "CAND-01",
+    "name": "Dr. Rajeshwar Verma",
+    "party": "National Progress Alliance",
+    "symbol": "⚡",
+    "symbol_name": "Electric Bolt",
+    "color": "#3b82f6",
+    "manifesto": "Innovation, Smart Infrastructure & Sustainable Energy"
+  },
+  {
+    "id": "CAND-02",
+    "name": "Sunita Deshmukh",
+    "party": "People's Integrity Front",
+    "symbol": "🌾",
+    "symbol_name": "Golden Grain",
+    "color": "#10b981",
+    "manifesto": "Agrarian Modernization & Universal Healthcare"
+  },
+  {
+    "id": "CAND-03",
+    "name": "Kabir Al-Mansoor",
+    "party": "Democratic Reform Coalition",
+    "symbol": "⚖️",
+    "symbol_name": "Scales of Justice",
+    "color": "#8b5cf6",
+    "manifesto": "Judicial Transparency & Youth Employment Initiatives"
+  },
+  {
+    "id": "CAND-04",
+    "name": "Meenakshi Sundaram",
+    "party": "Ecology & Future Party",
+    "symbol": "🌿",
+    "symbol_name": "Living Leaf",
+    "color": "#059669",
+    "manifesto": "Clean Air Mandate & Digital Literacy for All"
+  },
+  {
+    "id": "CAND-NOTA",
+    "name": "None of the Above (NOTA)",
+    "party": "Independent Voter Right",
+    "symbol": "🚫",
+    "symbol_name": "Ballot Rejection",
+    "color": "#ef4444",
+    "manifesto": "Rejection of all nominated candidates in this constituency"
+  }
+]
