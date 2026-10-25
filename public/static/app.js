@@ -698,13 +698,17 @@ function renderCandidates(candidates) {
   if (!container) return;
   container.innerHTML = '';
 
-  candidates.forEach(cand => {
+  highlightedCandidateIndex = 0;
+
+  candidates.forEach((cand, idx) => {
     const card = document.createElement('div');
-    card.className = 'candidate-card';
+    card.className = idx === 0 ? 'candidate-card keyboard-highlighted' : 'candidate-card';
+    const contractNum = cand.contract_id !== undefined ? cand.contract_id : idx;
     card.innerHTML = `
       <div style="display: flex; align-items: center;">
         <div class="cand-symbol-box">${cand.symbol}</div>
         <div class="cand-info">
+          <div style="font-size: 0.72rem; color: #38bdf8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Candidate #${contractNum} (Contract Slot)</div>
           <h3>${cand.name}</h3>
           <p>${cand.party}</p>
         </div>
@@ -788,6 +792,15 @@ function showConfirmationReceipt(receipt) {
   document.getElementById('rcpt-hash').innerText = receipt.salted_voter_hash;
   document.getElementById('rcpt-zkproof').innerText = receipt.zk_proof_receipt;
   document.getElementById('rcpt-status').innerText = receipt.ledger_status;
+
+  const txBox = document.getElementById('rcpt-tx');
+  const txWrapper = document.getElementById('rcpt-tx-wrapper');
+  if (receipt.blockchain_tx_hash) {
+    if (txBox) txBox.innerText = receipt.blockchain_tx_hash;
+    if (txWrapper) txWrapper.style.display = 'block';
+  } else if (txWrapper) {
+    txWrapper.style.display = 'none';
+  }
 
   if (KioskState.autoResetTimer) {
     clearInterval(KioskState.autoResetTimer);

@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger("crypto")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-ELECTION_SALT = os.environ.get("ELECTION_SALT", "ELECTION-2026-AIRGAPPED-SALT-98F12B")
+ELECTION_SALT = os.environ.get("ELECTION_SALT", "LOCAL_TEST_SALT_2026")
 LOCAL_LEDGER_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "audit_ledger.jsonl")
 
 class DecoupledCryptoEngine:
@@ -34,10 +34,9 @@ class DecoupledCryptoEngine:
 
     def compute_salted_voter_hash(self, voter_epic: str) -> str:
         normalized_epic = voter_epic.strip().upper()
-        h = hashlib.sha256()
-        h.update(normalized_epic.encode("utf-8"))
-        h.update(self.salt.encode("utf-8"))
-        return f"0x{h.hexdigest()}"
+        data = f"{self.salt}:{normalized_epic}".encode("utf-8")
+        h = hashlib.sha256(data).hexdigest()
+        return f"0x{h}"
 
     def check_has_voted(self, voter_epic: str) -> bool:
         v_hash = self.compute_salted_voter_hash(voter_epic)
@@ -75,7 +74,7 @@ class DecoupledCryptoEngine:
         del self.active_ephemeral_tokens[ephemeral_token]
         return record["salted_voter_hash"]
 
-    def create_ballot_payload(self, candidate_id: str, salted_voter_hash: str, booth_id: str = "KIOSK-BOOTH-01") -> Dict[str, Any]:
+    def create_ballot_payload(self, candidate_id: str, salted_voter_hash: str, booth_id: str = "KIOSK-BOOTH-01", contract_candidate_id: int = 0) -> Dict[str, Any]:
         timestamp = int(time.time())
         ballot_nonce = f"0x{secrets.token_hex(16)}"
         msg = f"{ballot_nonce}:{salted_voter_hash}:{candidate_id}:{timestamp}"
@@ -86,6 +85,7 @@ class DecoupledCryptoEngine:
             "ballot_nonce": ballot_nonce,
             "salted_voter_hash": salted_voter_hash,
             "candidate_id": candidate_id,
+            "contract_candidate_id": contract_candidate_id,
             "terminal_id": booth_id,
             "timestamp": timestamp,
             "terminal_signature": signature,
@@ -116,14 +116,29 @@ class DecoupledCryptoEngine:
                 pass
 
         ledger_status = "RECORDED_LOCALLY"
-        web3_endpoint = os.environ.get("WEB3_MODULE_URL", "http://localhost:8545/api/vote")
+        blockchain_tx = None
+
         try:
-            import requests
-            r = requests.post(web3_endpoint, json=payload, timeout=0.8)
-            if r.status_code == 200:
-                ledger_status = "CONFIRMED"
-        except Exception:
-            ledger_status = "BUFFERED"
+            from backend.blockchain_bridge import cast_vote_on_chain, is_blockchain_ready
+            if is_blockchain_ready():
+                contract_c_id = payload.get("contract_candidate_id", 0)
+                tx_hash = cast_vote_on_chain(payload["salted_voter_hash"], contract_c_id)
+                if tx_hash:
+                    blockchain_tx = tx_hash
+                    ledger_status = "CONFIRMED_ON_CHAIN"
+        except Exception as e:
+            logger.info(f"Blockchain bridge standby: {e}")
+
+        if ledger_status == "RECORDED_LOCALLY":
+            web3_endpoint = os.environ.get("WEB3_MODULE_URL")
+            if web3_endpoint:
+                try:
+                    import requests
+                    r = requests.post(web3_endpoint, json=payload, timeout=0.8)
+                    if r.status_code == 200:
+                        ledger_status = "CONFIRMED"
+                except Exception:
+                    ledger_status = "BUFFERED"
 
         return {
             "success": True,
@@ -131,7 +146,8 @@ class DecoupledCryptoEngine:
             "salted_voter_hash": v_hash,
             "zk_proof_receipt": payload["zk_proof_receipt"],
             "timestamp": payload["timestamp"],
-            "ledger_status": ledger_status
+            "ledger_status": ledger_status,
+            "blockchain_tx_hash": blockchain_tx
         }
 
 crypto_engine = DecoupledCryptoEngine()

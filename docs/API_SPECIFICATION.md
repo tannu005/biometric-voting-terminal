@@ -155,9 +155,24 @@
   "candidates": [
     {
       "id": "CAND-01",
+      "contract_id": 0,
       "name": "Dr. Rajeshwar Verma",
       "party": "National Progress Alliance",
       "symbol": "⚡"
+    },
+    {
+      "id": "CAND-02",
+      "contract_id": 1,
+      "name": "Sunita Deshmukh",
+      "party": "People's Integrity Front",
+      "symbol": "🌾"
+    },
+    {
+      "id": "CAND-03",
+      "contract_id": 2,
+      "name": "Kabir Al-Mansoor",
+      "party": "Democratic Reform Coalition",
+      "symbol": "⚖️"
     }
   ],
   "next_step": "BALLOT_CANDIDATE_SELECTION"

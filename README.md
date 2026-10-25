@@ -78,6 +78,17 @@ The hardware agent manages:
 
 If the Raspberry Pi is not connected, the kiosk automatically falls back to local operation with simulated hardware.
 
+## Blockchain & Smart Contract Integration
+
+The kiosk aligns directly with the Foundry `VotingSystem.sol` smart contract:
+- **Contract Address**: `0x5FbDB2315678afecb367f032d93F642f64180aa3` (Anvil Chain ID: `31337`)
+- **Default System Salt**: `LOCAL_TEST_SALT_2026`
+- **Candidate Count**: Exactly 3 candidates matching contract deployment (`uint256 candidateCount = 3`):
+  - **Slot 0**: Dr. Rajeshwar Verma (`⚡` National Progress Alliance)
+  - **Slot 1**: Sunita Deshmukh (`🌾` People's Integrity Front)
+  - **Slot 2**: Kabir Al-Mansoor (`⚖️` Democratic Reform Coalition)
+- **On-Chain Dispatch**: Calls `castVote(bytes32 voterHash, uint256 candidateId)` with deterministic salted hash and records the transaction receipt.
+
 ## Tech Stack
 
 - **Backend**: FastAPI, Uvicorn, Python 3

@@ -1,6 +1,7 @@
 [
   {
     "id": "CAND-01",
+    "contract_id": 0,
     "name": "Dr. Rajeshwar Verma",
     "party": "National Progress Alliance",
     "symbol": "⚡",
@@ -10,6 +11,7 @@
   },
   {
     "id": "CAND-02",
+    "contract_id": 1,
     "name": "Sunita Deshmukh",
     "party": "People's Integrity Front",
     "symbol": "🌾",
@@ -19,29 +21,12 @@
   },
   {
     "id": "CAND-03",
+    "contract_id": 2,
     "name": "Kabir Al-Mansoor",
     "party": "Democratic Reform Coalition",
     "symbol": "⚖️",
     "symbol_name": "Scales of Justice",
     "color": "#8b5cf6",
     "manifesto": "Judicial Transparency & Youth Employment Initiatives"
-  },
-  {
-    "id": "CAND-04",
-    "name": "Meenakshi Sundaram",
-    "party": "Ecology & Future Party",
-    "symbol": "🌿",
-    "symbol_name": "Living Leaf",
-    "color": "#059669",
-    "manifesto": "Clean Air Mandate & Digital Literacy for All"
-  },
-  {
-    "id": "CAND-NOTA",
-    "name": "None of the Above (NOTA)",
-    "party": "Independent Voter Right",
-    "symbol": "🚫",
-    "symbol_name": "Ballot Rejection",
-    "color": "#ef4444",
-    "manifesto": "Rejection of all nominated candidates in this constituency"
   }
 ]

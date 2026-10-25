@@ -143,7 +143,10 @@ class TestEndToEndKioskAPI(unittest.TestCase):
         self.assertEqual(r_auth.status_code, 200)
         auth_data = r_auth.json()
         ephemeral_token = auth_data["ephemeral_token"]
-        self.assertTrue(len(auth_data["candidates"]) > 0)
+        self.assertEqual(len(auth_data["candidates"]), 3)
+        self.assertEqual(auth_data["candidates"][0]["contract_id"], 0)
+        self.assertEqual(auth_data["candidates"][1]["contract_id"], 1)
+        self.assertEqual(auth_data["candidates"][2]["contract_id"], 2)
 
         r_cast = self.client.post("/api/ballot/cast", json={
             "ephemeral_token": ephemeral_token,
@@ -154,6 +157,7 @@ class TestEndToEndKioskAPI(unittest.TestCase):
         cast_data = r_cast.json()
         self.assertTrue(cast_data["success"])
         self.assertIn("receipt", cast_data)
+        self.assertEqual(cast_data["receipt"]["contract_candidate_id"], 0)
 
         r_lookup_again = self.client.post("/api/voter/lookup", json={"epic": test_epic})
         self.assertEqual(r_lookup_again.status_code, 409)

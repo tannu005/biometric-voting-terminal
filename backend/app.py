@@ -317,7 +317,11 @@ async def cast_vote(req: CastVoteRequest):
         )
 
     candidates = load_candidates()
-    cand_dict = {c["id"]: c for c in candidates}
+    cand_dict = {}
+    for idx, c in enumerate(candidates):
+        cand_dict[c["id"]] = c
+        cand_dict[str(c.get("contract_id", idx))] = c
+
     if req.candidate_id not in cand_dict:
         raise HTTPException(
             status_code=400,
@@ -326,7 +330,8 @@ async def cast_vote(req: CastVoteRequest):
     candidate = cand_dict[req.candidate_id]
 
     payload = crypto_engine.create_ballot_payload(
-        candidate_id=req.candidate_id,
+        candidate_id=candidate["id"],
+        contract_candidate_id=candidate.get("contract_id", 0),
         salted_voter_hash=salted_voter_hash,
         booth_id="KIOSK-TERMINAL-01"
     )
@@ -342,21 +347,38 @@ async def cast_vote(req: CastVoteRequest):
         "receipt": {
             "ballot_nonce": ledger_result["ballot_nonce"],
             "salted_voter_hash": ledger_result["salted_voter_hash"],
+            "candidate_id": candidate["id"],
+            "contract_candidate_id": candidate.get("contract_id", 0),
             "candidate_name": candidate["name"],
             "party": candidate["party"],
             "symbol": candidate["symbol"],
             "timestamp": ledger_result["timestamp"],
             "zk_proof_receipt": ledger_result["zk_proof_receipt"],
-            "ledger_status": ledger_result["ledger_status"]
+            "ledger_status": ledger_result["ledger_status"],
+            "blockchain_tx_hash": ledger_result.get("blockchain_tx_hash")
         },
         "message": "Vote successfully cast and recorded."
     }
 
 @app.get("/api/system/status")
 async def system_status():
+    blockchain_ready = False
+    try:
+        from backend.blockchain_bridge import is_blockchain_ready
+        blockchain_ready = is_blockchain_ready()
+    except Exception:
+        pass
+
     return {
         "status": "OPERATIONAL",
         "terminal_id": "KIOSK-TERMINAL-01",
+        "blockchain": {
+            "network": "Anvil Local Testnet",
+            "chain_id": 31337,
+            "contract_address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+            "candidate_count": 3,
+            "connected": blockchain_ready
+        },
         "hardware": {
             "as608_fingerprint_scanner": {
                 "active_mode": "MOCK/EMULATION" if as608_sensor.mock_mode else "PHYSICAL_UART",
