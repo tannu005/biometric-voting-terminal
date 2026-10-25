@@ -60,18 +60,100 @@ if os.path.exists(VOTER_DB_DIR):
 VOTERS_FILE = os.path.join(ROOT_DIR, "data", "voters.json")
 CANDIDATES_FILE = os.path.join(ROOT_DIR, "data", "candidates.json")
 
+DEFAULT_VOTERS = [
+    {
+        "epic": "VOTE-IND-2026-001",
+        "name": "Aarav Sharma",
+        "constituency": "Central Tech Constituency - AC-07",
+        "gender": "Male",
+        "dob": "1994-08-15",
+        "fingerprint_slot": 1,
+        "is_eligible": True,
+        "photo": "VOTE-IND-2026-001.jpg"
+    },
+    {
+        "epic": "VOTE-IND-2026-002",
+        "name": "Priya Patel",
+        "constituency": "Central Tech Constituency - AC-07",
+        "gender": "Female",
+        "dob": "1998-03-22",
+        "fingerprint_slot": 2,
+        "is_eligible": True,
+        "photo": "VOTE-IND-2026-002.jpg"
+    },
+    {
+        "epic": "VOTE-IND-2026-003",
+        "name": "Vikram Malhotra",
+        "constituency": "Central Tech Constituency - AC-07",
+        "gender": "Male",
+        "dob": "1988-11-04",
+        "fingerprint_slot": 3,
+        "is_eligible": True,
+        "photo": "VOTE-IND-2026-003.jpg"
+    },
+    {
+        "epic": "VOTE-IND-2026-004",
+        "name": "Ananya Sen",
+        "constituency": "Central Tech Constituency - AC-07",
+        "gender": "Female",
+        "dob": "2001-05-19",
+        "fingerprint_slot": 4,
+        "is_eligible": True,
+        "photo": "VOTE-IND-2026-004.jpg"
+    }
+]
+
+DEFAULT_CANDIDATES = [
+    {
+        "id": "CAND-01",
+        "contract_id": 0,
+        "name": "Dr. Rajeshwar Verma",
+        "party": "National Progress Alliance",
+        "symbol": "⚡",
+        "symbol_name": "Electric Bolt",
+        "color": "#3b82f6",
+        "manifesto": "Innovation, Smart Infrastructure & Sustainable Energy"
+    },
+    {
+        "id": "CAND-02",
+        "contract_id": 1,
+        "name": "Sunita Deshmukh",
+        "party": "People's Integrity Front",
+        "symbol": "🌾",
+        "symbol_name": "Golden Grain",
+        "color": "#10b981",
+        "manifesto": "Agrarian Modernization & Universal Healthcare"
+    },
+    {
+        "id": "CAND-03",
+        "contract_id": 2,
+        "name": "Kabir Al-Mansoor",
+        "party": "Democratic Reform Coalition",
+        "symbol": "⚖️",
+        "symbol_name": "Scales of Justice",
+        "color": "#8b5cf6",
+        "manifesto": "Judicial Transparency & Youth Employment Initiatives"
+    }
+]
+
 def load_voters() -> Dict[str, Dict[str, Any]]:
     if os.path.exists(VOTERS_FILE):
-        with open(VOTERS_FILE, "r", encoding="utf-8") as f:
-            v_list = json.load(f)
-            return {v["epic"].upper(): v for v in v_list}
-    return {}
+        try:
+            with open(VOTERS_FILE, "r", encoding="utf-8") as f:
+                v_list = json.load(f)
+                return {v["epic"].upper(): v for v in v_list}
+        except Exception:
+            pass
+    return {v["epic"].upper(): v for v in DEFAULT_VOTERS}
 
 def load_candidates() -> list:
     if os.path.exists(CANDIDATES_FILE):
-        with open(CANDIDATES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
+        try:
+            with open(CANDIDATES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return DEFAULT_CANDIDATES
 
 PI_URL = os.environ.get("PI_URL", "http://192.168.50.2:8000").rstrip("/")
 EVM_DEVICE_TOKEN = os.environ.get("EVM_DEVICE_TOKEN", "EVM-DEVICE-SECURE-LAN-TOKEN")
