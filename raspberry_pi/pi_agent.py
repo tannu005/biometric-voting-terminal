@@ -28,7 +28,7 @@ try:
 except Exception:
     pass
 
-app = FastAPI(title='EVM Hardware Agent')
+agent_app = FastAPI(title='EVM Hardware Agent')
 events = queue.Queue()
 hardware_lock = threading.Lock()
 
@@ -130,7 +130,7 @@ def authorize(x_device_token: str = Header(default='')):
 class DisplayRequest(BaseModel):
     message: str
 
-@app.get('/health')
+@agent_app.get('/health')
 def health(_auth: bool = Depends(authorize)):
     return {
         'device': 'raspberry_pi',
@@ -145,12 +145,12 @@ def health(_auth: bool = Depends(authorize)):
         'timestamp': time.time()
     }
 
-@app.post('/display')
+@agent_app.post('/display')
 def display(request: DisplayRequest, _auth: bool = Depends(authorize)):
     show_message(request.message)
     return {'ok': True, 'message': request.message}
 
-@app.post('/fingerprint/match')
+@agent_app.post('/fingerprint/match')
 def fingerprint_match(_auth: bool = Depends(authorize)):
     if finger is None:
         raise HTTPException(
@@ -197,7 +197,7 @@ def fingerprint_match(_auth: bool = Depends(authorize)):
 
         raise HTTPException(status_code=500, detail=f'Fingerprint search error: {result}')
 
-@app.post('/camera/capture')
+@agent_app.post('/camera/capture')
 def capture_camera(_auth: bool = Depends(authorize)):
     if camera is None:
         raise HTTPException(status_code=503, detail=f'Camera unavailable: {camera_error}')
@@ -221,7 +221,7 @@ def capture_camera(_auth: bool = Depends(authorize)):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f'Camera capture failed: {exc}')
 
-@app.get('/events')
+@agent_app.get('/events')
 def get_events(_auth: bool = Depends(authorize)):
     result = []
     while len(result) < 50:
@@ -231,7 +231,7 @@ def get_events(_auth: bool = Depends(authorize)):
             break
     return {'events': result}
 
-@app.on_event('shutdown')
+@agent_app.on_event('shutdown')
 def cleanup():
     for button in buttons.values():
         try:
@@ -260,4 +260,4 @@ def cleanup():
 
 if __name__ == '__main__':
     print(f'Starting EVM Hardware Agent on {HOST}:{PORT}')
-    uvicorn.run(app, host=HOST, port=PORT)
+    uvicorn.run(agent_app, host=HOST, port=PORT)
