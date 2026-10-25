@@ -142,10 +142,7 @@ class TestEndToEndKioskAPI(unittest.TestCase):
         self.assertEqual(r_lookup.status_code, 200)
         self.assertEqual(r_lookup.json()["voter"]["epic"], test_epic)
 
-        r_face = self.client.post("/api/biometrics/face-verify", json={"epic": test_epic, "force_mock": True})
-        self.assertEqual(r_face.status_code, 200)
-        self.assertEqual(r_face.json()["verification"]["status"], "MATCH_SUCCESS")
-
+        # Step 2: Fingerprint verification
         r_fp_notouch = self.client.post("/api/biometrics/fingerprint-verify", json={
             "epic": test_epic,
             "method": "LAPTOP_HARDWARE_FINGERPRINT",
@@ -161,6 +158,11 @@ class TestEndToEndKioskAPI(unittest.TestCase):
         })
         self.assertEqual(r_fp.status_code, 200)
         self.assertEqual(r_fp.json()["verification"]["status"], "MATCH_SUCCESS")
+
+        # Step 3: Facial verification
+        r_face = self.client.post("/api/biometrics/face-verify", json={"epic": test_epic, "force_mock": True})
+        self.assertEqual(r_face.status_code, 200)
+        self.assertEqual(r_face.json()["verification"]["status"], "MATCH_SUCCESS")
 
         r_auth = self.client.post("/api/ballot/authorize", json={"epic": test_epic})
         self.assertEqual(r_auth.status_code, 200)

@@ -545,7 +545,7 @@ async def voter_lookup(req: VoterLookupRequest):
             "constituency": voter["constituency"],
             "photo_url": f"/voter_db/{voter.get('photo', epic + '.jpg')}"
         },
-        "next_step": "FACIAL_SCAN_VISUALIZER"
+        "next_step": "FINGERPRINT_SCAN_STAGE"
     }
 
 @app.get("/api/hardware/health")

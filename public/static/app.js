@@ -137,8 +137,8 @@ const FALLBACK_CANDIDATES = [
 
 const screens = {
   1: document.getElementById('screen-epic'),
-  2: document.getElementById('screen-face'),
-  3: document.getElementById('screen-fingerprint'),
+  2: document.getElementById('screen-fingerprint'),
+  3: document.getElementById('screen-face'),
   4: document.getElementById('screen-ballot'),
   5: document.getElementById('screen-confirm')
 };
@@ -189,12 +189,12 @@ function setScreenState(stepNumber) {
     stopAutomaticFaceTracker();
     updatePiDisplay("EVM Terminal\nEnter Voter ID");
   } else if (stepNumber === 2) {
+    stopAutomaticFaceTracker();
+    updatePiDisplay("Fingerprint Scan\nTouch Sensor");
+  } else if (stepNumber === 3) {
     updatePiDisplay("Facial Scan\nLook at Camera");
     initWebcamStream();
     startAutomaticFaceTracker();
-  } else if (stepNumber === 3) {
-    stopAutomaticFaceTracker();
-    updatePiDisplay("Place Finger on\nR307S Sensor");
   } else if (stepNumber === 4) {
     stopAutomaticFaceTracker();
     updatePiDisplay("Select Candidate\nPress Switch");
@@ -526,7 +526,7 @@ function startAutomaticFaceTracker() {
   const statusBadge = document.getElementById('face-scan-status');
 
   faceTrackerInterval = setInterval(async () => {
-    if (KioskState.currentStep !== 2 || isVerifyingFace || currentCameraSource !== 'laptop') return;
+    if (KioskState.currentStep !== 3 || isVerifyingFace || currentCameraSource !== 'laptop') return;
     if (!videoEl || !videoEl.videoWidth) return;
 
     if (hudCanvas && (hudCanvas.width !== videoEl.clientWidth || hudCanvas.height !== videoEl.clientHeight)) {
@@ -643,10 +643,10 @@ async function executeFaceVerification(imageData) {
       }
       if (label) label.innerText = '✓ Identity Verified: ' + ver.message;
 
-      updatePiDisplay('Face Verified\nAdvance Step 3');
+      updatePiDisplay('Face Verified\nBallot Unlocked');
 
-      setTimeout(() => {
-        setScreenState(3);
+      setTimeout(async () => {
+        await unlockBallot();
       }, 1200);
     } else {
       audio.errorTone();
@@ -670,7 +670,7 @@ async function executeFaceVerification(imageData) {
 
       setTimeout(() => {
         isVerifyingFace = false;
-        if (KioskState.currentStep === 2 && currentCameraSource === 'laptop') {
+        if (KioskState.currentStep === 3 && currentCameraSource === 'laptop') {
           startAutomaticFaceTracker();
         }
       }, 2500);
@@ -694,7 +694,7 @@ async function executeFaceVerification(imageData) {
     }
     setTimeout(() => {
       isVerifyingFace = false;
-      if (KioskState.currentStep === 2 && currentCameraSource === 'laptop') {
+      if (KioskState.currentStep === 3 && currentCameraSource === 'laptop') {
         startAutomaticFaceTracker();
       }
     }, 2500);
@@ -789,8 +789,9 @@ async function triggerLaptopPhysicalFingerprint() {
 
       const data = await resp.json();
       if (data.verification?.status === "MATCH_SUCCESS") {
-        setTimeout(async () => {
-          await unlockBallot();
+        updatePiDisplay("Fingerprint OK\nLook at Camera");
+        setTimeout(() => {
+          setScreenState(3);
         }, 900);
       }
     }
@@ -850,9 +851,9 @@ async function triggerRpiR307SFingerprint() {
         graphic.classList.add('success');
       }
       statusText.innerHTML = `<span style="color: #34d399; font-weight: bold;">✓ ${ver.message}</span>`;
-      updatePiDisplay("Fingerprint OK\nBallot Unlocked");
-      setTimeout(async () => {
-        await unlockBallot();
+      updatePiDisplay("Fingerprint OK\nLook at Camera");
+      setTimeout(() => {
+        setScreenState(3);
       }, 900);
     } else {
       audio.errorTone();
@@ -907,8 +908,9 @@ async function triggerAS608SensorScan() {
         graphic.classList.add('success');
       }
       statusText.innerHTML = `<span style="color: #34d399; font-weight: bold;">✓ MATCH_SUCCESS: AS608 optical minutiae verified (Confidence: ${ver.score}%)</span>`;
-      setTimeout(async () => {
-        await unlockBallot();
+      updatePiDisplay("Fingerprint OK\nLook at Camera");
+      setTimeout(() => {
+        setScreenState(3);
       }, 900);
     } else {
       audio.errorTone();
