@@ -513,6 +513,12 @@ body {
   background: #064e3b;
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
 }
+.candidate-card.keyboard-highlighted {
+  border-color: #38bdf8;
+  background: #172554;
+  box-shadow: 0 0 22px rgba(56, 189, 248, 0.5);
+  transform: translateY(-2px);
+}
 .cand-symbol-box {
   font-size: 38px;
   width: 64px;

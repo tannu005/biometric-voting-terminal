@@ -28,12 +28,12 @@ class BiometricFusionEngine:
         self.active_sessions[voter_epic] = session
         return session
 
-    def process_facial_verification(self, voter_epic: str, force_mock: Optional[bool] = None) -> Dict[str, Any]:
+    def process_facial_verification(self, voter_epic: str, snapshot_frame: Optional[Any] = None, force_mock: Optional[bool] = None) -> Dict[str, Any]:
         session = self.active_sessions.get(voter_epic)
         if not session:
             session = self.start_session(voter_epic)
 
-        face_eval = face_pipeline.verify_voter_face(voter_epic, force_mock=force_mock)
+        face_eval = face_pipeline.verify_voter_face(voter_epic, snapshot_frame=snapshot_frame, force_mock=force_mock)
         session["face_result"] = face_eval
         self._evaluate_consensus(session)
         return face_eval

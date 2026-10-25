@@ -21,8 +21,9 @@
     </div>
 
     <div class="system-status-badges">
-      <div class="badge pulse success" id="badge-airgap">ISOLATION: ACTIVE</div>
-      <div class="badge" id="badge-as608-status">AS608: READY</div>
+      <div class="badge pulse success" id="badge-airgap">ETHERNET: DIRECT</div>
+      <div class="badge" id="badge-pi-status">PI: CHECKING...</div>
+      <div class="badge" id="badge-as608-status">R307S/AS608: READY</div>
       <div class="badge success" id="badge-camera-status">CAMERA: ACTIVE</div>
       <div class="badge" id="badge-terminal-id">TERMINAL: NODE-01</div>
     </div>
@@ -105,9 +106,9 @@
         <p class="screen-desc">Look directly into the camera sensor for facial verification</p>
       </div>
 
-      <div class="face-hud-layout">
-        <div class="video-frame-box">
+        <div class="video-frame-box" style="position: relative;">
           <video id="client-webcam-feed" autoplay playsinline muted style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 12px;"></video>
+          <canvas id="face-hud-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; border-radius: 12px;"></canvas>
           <img id="server-mjpeg-stream" src="/video_feed" class="video-stream" alt="Live Camera Feed">
           <div class="video-overlay-elements">
             <span class="badge pulse success" id="badge-cam-feed-status">CAMERA ACTIVE</span>
@@ -125,6 +126,17 @@
             </div>
           </div>
 
+          <div class="auto-detect-box" id="auto-detect-container" style="background: rgba(15, 23, 42, 0.7); border: 1px solid #334155; padding: 12px; border-radius: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <span id="auto-detect-label" style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">Scanning for live face...</span>
+              <span id="auto-detect-percent" style="font-size: 0.85rem; font-weight: 700; color: #34d399;">0%</span>
+            </div>
+            <div class="progress-track" style="height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
+              <div class="progress-fill" id="auto-detect-progress" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #34d399); transition: width 0.2s ease;"></div>
+            </div>
+            <p style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; margin-bottom: 0;">Face will automatically verify once centered and held still.</p>
+          </div>
+
           <div class="metric-bar-group">
             <div class="metric-header">
               <span>Similarity Score</span>
@@ -137,12 +149,12 @@
 
           <div style="background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 10px; border: 1px solid #1e293b;">
             <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span>Liveness Check:</span>
-              <span style="color: #34d399; font-weight: bold;">PASS</span>
+              <span>Anti-Spoofing:</span>
+              <span style="color: #34d399; font-weight: bold;" id="hud-liveness-tag">ACTIVE (LIVE ONLY)</span>
             </div>
             <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
-              <span>Pipeline:</span>
-              <span style="color: #60a5fa;">OpenCV</span>
+              <span>Detection:</span>
+              <span style="color: #60a5fa;">Automatic Real-Face</span>
             </div>
           </div>
 
@@ -181,11 +193,14 @@
         </div>
 
         <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+          <button class="btn-primary" id="btn-scan-rpi-fp" onclick="triggerRpiR307SFingerprint()" style="display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #059669, #10b981);">
+            <span>🍓</span> Pi R307S Optical Sensor
+          </button>
           <button class="btn-primary" id="btn-scan-laptop-fp" onclick="triggerLaptopPhysicalFingerprint()" style="display: inline-flex; align-items: center; gap: 8px;">
-            <span>💻</span> Touch Fingerprint Sensor
+            <span>💻</span> Laptop Power Button Sensor
           </button>
           <button class="btn-primary" id="btn-scan-as608-fp" onclick="triggerAS608SensorScan()" style="background: #1e293b; border: 1px solid #334155; color: #94a3b8; font-size: 0.9rem; box-shadow: none;">
-            <span>🔌</span> External AS608 (UART)
+            <span>🔌</span> Local AS608 (UART)
           </button>
         </div>
       </div>

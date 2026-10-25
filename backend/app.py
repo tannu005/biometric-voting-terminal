@@ -2,8 +2,17 @@ import os
 import sys
 import json
 import time
+import base64
 import logging
 from typing import Dict, Any, Optional
+import requests
+import numpy as np
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
@@ -59,12 +68,34 @@ def load_candidates() -> list:
             return json.load(f)
     return []
 
+PI_URL = os.environ.get("PI_URL", "http://192.168.50.2:8000").rstrip("/")
+EVM_DEVICE_TOKEN = os.environ.get("EVM_DEVICE_TOKEN", "EVM-DEVICE-SECURE-LAN-TOKEN")
+PI_HEADERS = {"X-Device-Token": EVM_DEVICE_TOKEN}
+PI_TIMEOUT = 1.0
+
+def query_pi_hardware(method: str, path: str, timeout: Optional[float] = None, **kwargs) -> Optional[Dict[str, Any]]:
+    to = timeout if timeout is not None else PI_TIMEOUT
+    try:
+        resp = requests.request(method, f"{PI_URL}{path}", headers=PI_HEADERS, timeout=to, **kwargs)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return None
+
 class VoterLookupRequest(BaseModel):
     epic: str
 
 class FaceVerifyRequest(BaseModel):
     epic: str
+    image_data: Optional[str] = None
     force_mock: Optional[bool] = False
+
+class FaceDetectRequest(BaseModel):
+    image_data: str
+
+class HardwareDisplayRequest(BaseModel):
+    message: str
 
 class FingerprintVerifyRequest(BaseModel):
     epic: str
@@ -133,10 +164,74 @@ async def voter_lookup(req: VoterLookupRequest):
         "next_step": "FACIAL_SCAN_VISUALIZER"
     }
 
+@app.get("/api/hardware/health")
+async def hardware_health():
+    pi_data = query_pi_hardware("GET", "/health")
+    return {
+        "connected": pi_data is not None,
+        "pi_url": PI_URL,
+        "pi": pi_data,
+        "local_camera": face_pipeline.is_camera_available(),
+        "local_as608": as608_sensor.is_connected or as608_sensor.mock_mode
+    }
+
+@app.post("/api/hardware/display")
+async def hardware_display(req: HardwareDisplayRequest):
+    result = query_pi_hardware("POST", "/display", json={"message": req.message})
+    return {"success": result is not None, "result": result}
+
+@app.get("/api/hardware/events")
+async def hardware_events():
+    data = query_pi_hardware("GET", "/events")
+    return data or {"events": []}
+
+@app.post("/api/biometrics/face-detect")
+async def detect_live_face(req: FaceDetectRequest):
+    try:
+        raw_b64 = req.image_data
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        img_bytes = base64.b64decode(raw_b64)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        if cv2 is not None:
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if frame is not None:
+                return face_pipeline.detect_live_face_quick(frame)
+    except Exception as e:
+        logger.warning(f"Error in face-detect: {e}")
+    return {
+        "detected": False,
+        "faces_count": 0,
+        "box": None,
+        "eyes_detected": False,
+        "liveness_pass": False,
+        "liveness_score": 0.0,
+        "status": "DECODE_ERROR",
+        "message": "Camera frame evaluation error"
+    }
+
 @app.post("/api/biometrics/face-verify")
 async def verify_face(req: FaceVerifyRequest):
     epic = req.epic.strip().upper()
-    result = fusion_engine.process_facial_verification(epic, force_mock=req.force_mock)
+    snapshot_frame = None
+    if req.image_data:
+        try:
+            raw_b64 = req.image_data
+            if "," in raw_b64:
+                raw_b64 = raw_b64.split(",", 1)[1]
+            img_bytes = base64.b64decode(raw_b64)
+            nparr = np.frombuffer(img_bytes, np.uint8)
+            if cv2 is not None:
+                snapshot_frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception as e:
+            logger.warning(f"Failed to decode face snapshot image: {e}")
+            snapshot_frame = None
+
+    result = fusion_engine.process_facial_verification(
+        epic,
+        snapshot_frame=snapshot_frame,
+        force_mock=req.force_mock
+    )
     status_summary = fusion_engine.get_session_status(epic)
     return {
         "verification": result,
@@ -146,7 +241,29 @@ async def verify_face(req: FaceVerifyRequest):
 @app.post("/api/biometrics/fingerprint-verify")
 async def verify_fingerprint(req: FingerprintVerifyRequest):
     epic = req.epic.strip().upper()
-    if req.method == "LAPTOP_HARDWARE_FINGERPRINT":
+    if req.method == "RPI_R307S_SENSOR":
+        pi_match = query_pi_hardware("POST", "/fingerprint/match", timeout=req.timeout_sec or 12.0)
+        if pi_match and pi_match.get("matched"):
+            result = {
+                "status": "MATCH_SUCCESS",
+                "score": pi_match.get("score", 95),
+                "template_id": pi_match.get("template_id", 1),
+                "mode": "RPI_R307S_ETHERNET",
+                "message": f"R307S Fingerprint verified (Score: {pi_match.get('score', 95)}%)"
+            }
+        else:
+            reason = (pi_match or {}).get("reason", "Sensor timeout or no template match")
+            result = {
+                "status": "MATCH_FAIL",
+                "score": 0,
+                "mode": "RPI_R307S_ETHERNET",
+                "message": f"Fingerprint rejected: {reason}"
+            }
+        session = fusion_engine.active_sessions.get(epic)
+        if session:
+            session["fingerprint_result"] = result
+            fusion_engine._evaluate_consensus(session)
+    elif req.method == "LAPTOP_HARDWARE_FINGERPRINT":
         result = fusion_engine.process_laptop_fingerprint(epic, req.credential)
     else:
         result = fusion_engine.process_fingerprint_verification(

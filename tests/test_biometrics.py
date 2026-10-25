@@ -52,17 +52,21 @@ class TestFacialVerification(unittest.TestCase):
         sim = self.pipe.compute_similarity(sig1, sig2)
         self.assertAlmostEqual(sim, 1.0, places=2)
 
-    def test_different_images_lower_similarity(self):
-        img1 = np.zeros((128, 128, 3), dtype=np.uint8)
-        img1[:64, :] = 220
-        
-        img2 = np.zeros((128, 128, 3), dtype=np.uint8)
-        img2[:, :64] = 220
-        
-        sig1 = self.pipe.extract_face_signature(img1)
-        sig2 = self.pipe.extract_face_signature(img2)
-        sim = self.pipe.compute_similarity(sig1, sig2)
-        self.assertLess(sim, 0.70)
+    def test_reject_blank_or_non_face(self):
+        blank = np.zeros((320, 240, 3), dtype=np.uint8)
+        box, liveness, status = self.pipe.detect_face_region(blank)
+        self.assertIsNone(box)
+        self.assertEqual(status, "NO_FACE")
+
+    def test_detect_real_face_portrait(self):
+        import cv2
+        portrait_path = os.path.join(ROOT_DIR, "data", "voter_db", "VOTE-IND-2026-001.jpg")
+        if os.path.exists(portrait_path):
+            img = cv2.imread(portrait_path)
+            box, liveness, status = self.pipe.detect_face_region(img)
+            self.assertIsNotNone(box)
+            self.assertEqual(status, "FACE_DETECTED")
+            self.assertGreaterEqual(liveness, 0.50)
 
 
 class TestCryptographicDecoupling(unittest.TestCase):

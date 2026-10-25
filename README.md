@@ -40,22 +40,43 @@ Then open http://localhost:8000 in your browser.
 python tests/test_biometrics.py
 ```
 
-## Hardware Setup (Raspberry Pi + AS608)
+## Hardware Setup (Raspberry Pi + R307S / AS608)
 
-If you are running this on a Raspberry Pi with an AS608 optical fingerprint reader wired over USB/UART:
+The system works in two modes:
+- **Standalone Mode**: Runs directly on any laptop or desktop using the built-in webcam and platform authenticator (Windows Hello / Touch ID).
+- **Distributed Hardware Mode**: Laptop acts as the kiosk terminal while a Raspberry Pi acts as the physical hardware agent connected via direct Ethernet cable.
 
-1. Connect the AS608 TX/RX pins or plug in via USB-UART adapter.
-2. Run the setup script to grant serial permissions and enable UART:
+### Direct Ethernet Configuration
+
+Connect an Ethernet patch cable between the laptop and the Raspberry Pi:
+- **Laptop**: IP `192.168.50.1`, Subnet `255.255.255.0`
+- **Raspberry Pi**: IP `192.168.50.2`, Subnet `255.255.255.0`
+
+### Running the Raspberry Pi Hardware Agent
+
+On the Raspberry Pi:
+1. Run setup:
    ```bash
-   sudo bash hardware/rpi_setup.sh
+   sudo bash raspberry_pi/setup_pi.sh
    sudo reboot
    ```
-3. Start the app:
+2. Start the hardware agent:
    ```bash
-   python run_kiosk.py
+   cd biometric-voting-terminal
+   source venv/bin/activate
+   python raspberry_pi/pi_agent.py
    ```
 
-If no hardware sensor is detected, the app automatically switches to emulation mode so you can test it on any machine.
+The hardware agent manages:
+- **R307S / AS608 Fingerprint Scanner**: Connected via UART (`/dev/ttyS0` or `/dev/ttyUSB0` at 57600 baud).
+- **Raspberry Pi Camera**: Captures high-res verification photos.
+- **16x2 I2C LCD (PCF8574)**: Displays real-time voting status and prompts at I2C address `0x27`.
+- **3 Tactical Switches**:
+  - Switch 1 (GPIO 17): Previous candidate / Cancel.
+  - Switch 2 (GPIO 27): Next candidate / Cycle.
+  - Switch 3 (GPIO 22): Confirm / Vote.
+
+If the Raspberry Pi is not connected, the kiosk automatically falls back to local operation with simulated hardware.
 
 ## Tech Stack
 

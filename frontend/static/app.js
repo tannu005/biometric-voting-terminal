@@ -74,6 +74,16 @@ const stepperItems = {
   5: document.getElementById('step-indicator-5')
 };
 
+async function updatePiDisplay(message) {
+  try {
+    await fetch('/api/hardware/display', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: message })
+    });
+  } catch (e) {}
+}
+
 function setScreenState(stepNumber) {
   KioskState.currentStep = stepNumber;
 
@@ -98,8 +108,22 @@ function setScreenState(stepNumber) {
   });
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (stepNumber === 2) {
+  if (stepNumber === 1) {
+    stopAutomaticFaceTracker();
+    updatePiDisplay("EVM Terminal\nEnter Voter ID");
+  } else if (stepNumber === 2) {
+    updatePiDisplay("Facial Scan\nLook at Camera");
     initWebcamStream();
+    startAutomaticFaceTracker();
+  } else if (stepNumber === 3) {
+    stopAutomaticFaceTracker();
+    updatePiDisplay("Place Finger on\nR307S Sensor");
+  } else if (stepNumber === 4) {
+    stopAutomaticFaceTracker();
+    updatePiDisplay("Select Candidate\nPress Switch");
+  } else if (stepNumber === 5) {
+    stopAutomaticFaceTracker();
+    updatePiDisplay("Ballot Cast OK\nPrinting Receipt");
   }
 }
 
@@ -209,54 +233,224 @@ function showEpicError(msg) {
   epicErrorMsg.innerText = msg;
 }
 
-async function triggerFaceVerify() {
-  audio.beep(600, 0.08);
+let faceTrackerInterval = null;
+let faceHoldStreak = 0;
+let isVerifyingFace = false;
+
+function captureWebcamFrameBase64(videoElement) {
+  if (!videoElement || !videoElement.videoWidth) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = videoElement.videoWidth || 640;
+  canvas.height = videoElement.videoHeight || 480;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function drawFaceTrackingHUD(canvas, box, isSuccess) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!box) return;
+
+  const scaleX = canvas.width / 320;
+  const scaleY = canvas.height / 240;
+  const x = box.x * scaleX;
+  const y = box.y * scaleY;
+  const w = box.w * scaleX;
+  const h = box.h * scaleY;
+
+  ctx.strokeStyle = isSuccess ? '#10b981' : '#38bdf8';
+  ctx.lineWidth = 3;
+  const corner = Math.min(w, h) * 0.25;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y + corner); ctx.lineTo(x, y); ctx.lineTo(x + corner, y);
+  ctx.moveTo(x + w - corner, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + corner);
+  ctx.moveTo(x, y + h - corner); ctx.lineTo(x, y + h); ctx.lineTo(x + corner, y + h);
+  ctx.moveTo(x + w - corner, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - corner);
+  ctx.stroke();
+
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  ctx.strokeStyle = isSuccess ? 'rgba(16, 185, 129, 0.4)' : 'rgba(56, 189, 248, 0.4)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
+  ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
+  ctx.stroke();
+}
+
+function startAutomaticFaceTracker() {
+  stopAutomaticFaceTracker();
+  faceHoldStreak = 0;
+  isVerifyingFace = false;
+
+  const videoEl = document.getElementById('client-webcam-feed');
+  const hudCanvas = document.getElementById('face-hud-canvas');
+  const label = document.getElementById('auto-detect-label');
+  const percent = document.getElementById('auto-detect-percent');
+  const progress = document.getElementById('auto-detect-progress');
+  const statusBadge = document.getElementById('face-scan-status');
+
+  faceTrackerInterval = setInterval(async () => {
+    if (KioskState.currentStep !== 2 || isVerifyingFace) return;
+    if (!videoEl || !videoEl.videoWidth) return;
+
+    if (hudCanvas && (hudCanvas.width !== videoEl.clientWidth || hudCanvas.height !== videoEl.clientHeight)) {
+      hudCanvas.width = videoEl.clientWidth || 400;
+      hudCanvas.height = videoEl.clientHeight || 300;
+    }
+
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = 320;
+    sampleCanvas.height = 240;
+    const sCtx = sampleCanvas.getContext('2d');
+    sCtx.drawImage(videoEl, 0, 0, 320, 240);
+    const smallB64 = sampleCanvas.toDataURL('image/jpeg', 0.6);
+
+    try {
+      const resp = await fetch('/api/biometrics/face-detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_data: smallB64 })
+      });
+      const data = await resp.json();
+
+      if (hudCanvas) {
+        drawFaceTrackingHUD(hudCanvas, data.box, data.detected && data.liveness_pass);
+      }
+
+      if (data.detected && data.faces_count === 1 && data.liveness_pass) {
+        faceHoldStreak++;
+        const pct = Math.min(100, faceHoldStreak * 34);
+        if (progress) progress.style.width = pct + '%';
+        if (percent) percent.innerText = pct + '%';
+        if (label) label.innerText = 'Live Face Detected - Hold still... (' + pct + '%)';
+        if (statusBadge) {
+          statusBadge.className = 'badge pulse success';
+          statusBadge.innerText = 'TRACKING FACE';
+        }
+
+        if (faceHoldStreak >= 3) {
+          isVerifyingFace = true;
+          stopAutomaticFaceTracker();
+          audio.beep(850, 0.08);
+          if (label) label.innerText = 'Authenticating Live Face...';
+          if (statusBadge) statusBadge.innerText = 'AUTHENTICATING';
+
+          const fullFrame = captureWebcamFrameBase64(videoEl);
+          await executeFaceVerification(fullFrame);
+        }
+      } else {
+        faceHoldStreak = 0;
+        if (progress) progress.style.width = '0%';
+        if (percent) percent.innerText = '0%';
+        if (label) label.innerText = data.message || 'Scanning for live face...';
+        if (statusBadge) {
+          statusBadge.className = 'badge';
+          statusBadge.innerText = data.status === 'MULTIPLE_FACES' ? 'MULTIPLE FACES' : 'SEARCHING';
+        }
+      }
+    } catch (e) {
+      console.warn('Face tracker cycle error:', e);
+    }
+  }, 320);
+}
+
+function stopAutomaticFaceTracker() {
+  if (faceTrackerInterval) {
+    clearInterval(faceTrackerInterval);
+    faceTrackerInterval = null;
+  }
+}
+
+async function executeFaceVerification(imageData) {
   const scanBtn = document.getElementById('btn-capture-face');
   const statusBadge = document.getElementById('face-scan-status');
   const confidenceFill = document.getElementById('face-confidence-fill');
   const confidenceText = document.getElementById('face-confidence-text');
+  const label = document.getElementById('auto-detect-label');
 
-  scanBtn.disabled = true;
-  scanBtn.innerText = "Analyzing Biometric Features...";
-  statusBadge.innerText = "Capturing Face & Liveness...";
+  if (scanBtn) {
+    scanBtn.disabled = true;
+    scanBtn.innerText = 'Analyzing Biometric Features...';
+  }
+  if (statusBadge) statusBadge.innerText = 'Evaluating Face...';
 
   try {
     const resp = await fetch('/api/biometrics/face-verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ epic: KioskState.activeEpic })
+      body: JSON.stringify({
+        epic: KioskState.activeEpic,
+        image_data: imageData
+      })
     });
 
     const data = await resp.json();
     const ver = data.verification;
 
-    if (ver.status === "MATCH_SUCCESS") {
+    if (ver.status === 'MATCH_SUCCESS') {
       audio.successChord();
-      confidenceFill.style.width = `${ver.match_score}%`;
-      confidenceText.innerText = `${ver.match_score}%`;
-      statusBadge.className = "badge success";
-      statusBadge.innerText = `VERIFIED: ${ver.message}`;
+      if (confidenceFill) confidenceFill.style.width = ver.match_score + '%';
+      if (confidenceText) confidenceText.innerText = ver.match_score + '%';
+      if (statusBadge) {
+        statusBadge.className = 'badge success';
+        statusBadge.innerText = 'VERIFIED: ' + ver.match_score + '%';
+      }
+      if (label) label.innerText = '✓ Identity Verified: ' + ver.message;
+
+      updatePiDisplay('Face Verified\nAdvance Step 3');
 
       setTimeout(() => {
         setScreenState(3);
       }, 1200);
     } else {
       audio.errorTone();
-      confidenceFill.style.width = `${ver.match_score}%`;
-      confidenceText.innerText = `${ver.match_score}%`;
-      statusBadge.className = "badge";
-      statusBadge.style.borderColor = "var(--accent-rose)";
-      statusBadge.style.color = "var(--accent-rose)";
-      statusBadge.innerText = `REJECTED: ${ver.message}`;
-      scanBtn.disabled = false;
-      scanBtn.innerText = "Retry Facial Verification";
+      if (confidenceFill) confidenceFill.style.width = (ver.match_score || 0) + '%';
+      if (confidenceText) confidenceText.innerText = (ver.match_score || 0) + '%';
+      if (statusBadge) {
+        statusBadge.className = 'badge';
+        statusBadge.style.borderColor = 'var(--accent-rose)';
+        statusBadge.style.color = 'var(--accent-rose)';
+        statusBadge.innerText = 'REJECTED';
+      }
+      if (label) label.innerText = '⚠️ ' + (ver.message || 'Face match rejected');
+      if (scanBtn) {
+        scanBtn.disabled = false;
+        scanBtn.innerText = 'Retry Facial Verification';
+      }
+
+      setTimeout(() => {
+        isVerifyingFace = false;
+        if (KioskState.currentStep === 2) {
+          startAutomaticFaceTracker();
+        }
+      }, 2500);
     }
   } catch (err) {
     audio.errorTone();
-    statusBadge.innerText = "Camera evaluation error";
-    scanBtn.disabled = false;
-    scanBtn.innerText = "Retry Facial Verification";
+    if (statusBadge) statusBadge.innerText = 'Camera evaluation error';
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.innerText = 'Retry Facial Verification';
+    }
+    setTimeout(() => {
+      isVerifyingFace = false;
+      if (KioskState.currentStep === 2) {
+        startAutomaticFaceTracker();
+      }
+    }, 2500);
   }
+}
+
+async function triggerFaceVerify() {
+  audio.beep(600, 0.08);
+  const videoEl = document.getElementById('client-webcam-feed');
+  const frame = captureWebcamFrameBase64(videoEl);
+  stopAutomaticFaceTracker();
+  isVerifyingFace = true;
+  await executeFaceVerification(frame);
 }
 
 
@@ -350,6 +544,63 @@ async function triggerLaptopPhysicalFingerprint() {
     } else {
       statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: bold;">⚠️ Hardware Notice: ${err.message || 'Laptop biometric device error'}. You can also use the External AS608 option.</span>`;
     }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function triggerRpiR307SFingerprint() {
+  audio.beep(700, 0.08);
+  const statusText = document.getElementById('fingerprint-status-text');
+  const subtext = document.getElementById('fingerprint-subtext');
+  const graphic = document.getElementById('scanner-target-graphic');
+  const btn = document.getElementById('btn-scan-rpi-fp');
+
+  if (graphic) {
+    graphic.classList.add('scanning');
+    graphic.classList.remove('success', 'shake-highlight');
+  }
+  if (btn) btn.disabled = true;
+
+  statusText.innerHTML = `<span style="color: #34d399;">Polling Raspberry Pi R307S optical sensor...</span>`;
+  if (subtext) subtext.innerText = "Place finger firmly on R307S sensor glass...";
+  updatePiDisplay("Place Finger on\nR307S Sensor");
+
+  try {
+    const resp = await fetch('/api/biometrics/fingerprint-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        epic: KioskState.activeEpic,
+        method: "RPI_R307S_SENSOR",
+        timeout_sec: 12.0
+      })
+    });
+
+    const data = await resp.json();
+    const ver = data.verification;
+
+    if (ver.status === "MATCH_SUCCESS") {
+      audio.successChord();
+      if (graphic) {
+        graphic.classList.remove('scanning');
+        graphic.classList.add('success');
+      }
+      statusText.innerHTML = `<span style="color: #34d399; font-weight: bold;">✓ ${ver.message}</span>`;
+      updatePiDisplay("Fingerprint OK\nBallot Unlocked");
+      setTimeout(async () => {
+        await unlockBallot();
+      }, 900);
+    } else {
+      audio.errorTone();
+      if (graphic) graphic.classList.remove('scanning');
+      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;">MATCH_FAIL: ${ver.message}</span>`;
+      updatePiDisplay("Match Fail\nTry Again");
+    }
+  } catch (err) {
+    audio.errorTone();
+    if (graphic) graphic.classList.remove('scanning');
+    statusText.innerText = "Raspberry Pi Ethernet communication timeout.";
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -594,15 +845,119 @@ async function checkSystemDiagnostic() {
     const as608Badge = document.getElementById('badge-as608-status');
     if (as608Badge && data.hardware?.as608_fingerprint_scanner) {
       const mode = data.hardware.as608_fingerprint_scanner.active_mode;
-      as608Badge.innerText = `AS608: ${mode}`;
+      as608Badge.innerText = `R307S/AS608: ${mode}`;
     }
   } catch (e) {
     console.warn("System diagnostic unreachable", e);
   }
+
+  try {
+    const hwResp = await fetch('/api/hardware/health');
+    if (hwResp.ok) {
+      const hwData = await hwResp.json();
+      const piBadge = document.getElementById('badge-pi-status');
+      if (piBadge) {
+        if (hwData.connected && hwData.pi?.status === 'READY') {
+          piBadge.innerText = "PI: 192.168.50.2 (ONLINE)";
+          piBadge.classList.add('success');
+        } else {
+          piBadge.innerText = "PI: LOCAL MODE";
+          piBadge.classList.remove('success');
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+let highlightedCandidateIndex = 0;
+let hardwarePollingInterval = null;
+
+function updateCandidateHighlight(cards) {
+  cards.forEach((c, idx) => {
+    if (idx === highlightedCandidateIndex) {
+      c.classList.add('keyboard-highlighted');
+      c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      c.classList.remove('keyboard-highlighted');
+    }
+  });
+}
+
+function handlePhysicalSwitchEvent(switchName) {
+  audio.beep(880, 0.05);
+  const currentScreen = KioskState.currentStep;
+
+  if (currentScreen === 1) {
+    if (switchName === 'switch_2') {
+      const epics = ['VOTE-IND-2026-001', 'VOTE-IND-2026-002', 'VOTE-IND-2026-003', 'VOTE-IND-2026-004'];
+      const current = document.getElementById('epic-input-field').value.trim();
+      let nextIdx = (epics.indexOf(current) + 1) % epics.length;
+      selectQuickEpic(epics[nextIdx]);
+    } else if (switchName === 'switch_3') {
+      submitEpic();
+    }
+  } else if (currentScreen === 2) {
+    if (switchName === 'switch_3') {
+      triggerFacialVerification();
+    }
+  } else if (currentScreen === 3) {
+    if (switchName === 'switch_3') {
+      triggerRpiR307SFingerprint();
+    }
+  } else if (currentScreen === 4) {
+    const modal = document.getElementById('vote-modal');
+    const isModalOpen = modal && modal.style.display === 'flex';
+
+    if (isModalOpen) {
+      if (switchName === 'switch_1') {
+        closeVoteConfirmation();
+      } else if (switchName === 'switch_3') {
+        executeCastVote();
+      }
+    } else {
+      const cards = document.querySelectorAll('.candidate-card');
+      if (!cards || cards.length === 0) return;
+
+      if (switchName === 'switch_1') {
+        highlightedCandidateIndex = (highlightedCandidateIndex - 1 + cards.length) % cards.length;
+        updateCandidateHighlight(cards);
+      } else if (switchName === 'switch_2') {
+        highlightedCandidateIndex = (highlightedCandidateIndex + 1) % cards.length;
+        updateCandidateHighlight(cards);
+      } else if (switchName === 'switch_3') {
+        if (KioskState.candidates && KioskState.candidates[highlightedCandidateIndex]) {
+          openVoteConfirmation(KioskState.candidates[highlightedCandidateIndex].id);
+        }
+      }
+    }
+  } else if (currentScreen === 5) {
+    if (switchName === 'switch_3') {
+      resetKioskForNextVoter();
+    }
+  }
+}
+
+function startHardwareEventPolling() {
+  if (hardwarePollingInterval) clearInterval(hardwarePollingInterval);
+  hardwarePollingInterval = setInterval(async () => {
+    try {
+      const resp = await fetch('/api/hardware/events');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data.events && Array.isArray(data.events)) {
+        for (const ev of data.events) {
+          if (ev.type === 'switch_pressed' && ev.switch) {
+            handlePhysicalSwitchEvent(ev.switch);
+          }
+        }
+      }
+    } catch (e) {}
+  }, 600);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   setScreenState(1);
   checkSystemDiagnostic();
   initSensorTouchListeners();
+  startHardwareEventPolling();
 });
