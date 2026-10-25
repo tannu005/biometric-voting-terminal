@@ -39,7 +39,7 @@ class FacialVerificationPipeline:
         
         self.face_cascade = None
         self.eye_cascade = None
-        if OPENCV_AVAILABLE and cv2 is not None:
+        if not os.environ.get("VERCEL") and OPENCV_AVAILABLE and cv2 is not None:
             models_dir = os.path.join(base_dir, 'biometrics', 'models')
             face_xml = os.path.join(models_dir, 'haarcascade_frontalface_default.xml')
             eye_xml = os.path.join(models_dir, 'haarcascade_eye.xml')
@@ -50,9 +50,10 @@ class FacialVerificationPipeline:
                 self.eye_cascade = cv2.CascadeClassifier(eye_xml)
 
     def is_camera_available(self) -> bool:
-        if not OPENCV_AVAILABLE or cv2 is None:
+        if os.environ.get("VERCEL") or not OPENCV_AVAILABLE or cv2 is None:
             return False
         return self.init_camera()
+
 
     def init_camera(self) -> bool:
         if self.cap is not None and self.cap.isOpened():

@@ -294,6 +294,23 @@ async function submitEpicLookup() {
       return;
     } else {
       const data = await resp.json().catch(() => ({}));
+      if (resp.status >= 500 || !data.detail?.error) {
+        const fallbackVoter = FALLBACK_VOTERS[epic];
+        if (fallbackVoter) {
+          audio.successChord();
+          KioskState.activeEpic = epic;
+          KioskState.voterData = fallbackVoter;
+          KioskState.isOfflineFallback = true;
+
+          document.getElementById('hud-voter-name').innerText = fallbackVoter.name;
+          document.getElementById('hud-voter-epic').innerText = fallbackVoter.epic;
+          document.getElementById('hud-voter-constituency').innerText = fallbackVoter.constituency;
+          document.getElementById('hud-voter-photo').src = fallbackVoter.photo_url;
+
+          setScreenState(2);
+          return;
+        }
+      }
       audio.errorTone();
       showEpicError(data.detail?.message || `EPIC '${epic}' not found in constituency roll.`);
       return;

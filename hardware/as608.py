@@ -11,8 +11,9 @@ try:
     import serial
     import serial.tools.list_ports
     SERIAL_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception):
     SERIAL_AVAILABLE = False
+
 
 class AS608Driver:
     HEADER = 0xEF01
@@ -52,8 +53,9 @@ class AS608Driver:
         self.is_connected = False
         self.mock_mode = False
         
-        if mock_mode is True:
+        if os.environ.get("VERCEL") or mock_mode is True:
             self.mock_mode = True
+            self.port = None
         else:
             self.port = port or self._detect_port()
             if self.port and SERIAL_AVAILABLE:
@@ -62,7 +64,10 @@ class AS608Driver:
                 self.mock_mode = True
 
     def _detect_port(self) -> Optional[str]:
+        if os.environ.get("VERCEL"):
+            return None
         candidate_ports = []
+
         if sys.platform.startswith("linux"):
             candidate_ports = [
                 "/dev/ttyUSB0",
