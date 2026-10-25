@@ -23,7 +23,21 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
+app = FastAPI(
+    title="Biometric Voting Terminal",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class SafeCryptoEngine:
+
     def __init__(self, salt: str = "LOCAL_TEST_SALT_2026"):
         self.salt = salt
         self.active_ephemeral_tokens: Dict[str, Dict[str, Any]] = {}
@@ -276,18 +290,6 @@ else:
 logger = logging.getLogger("server")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-app = FastAPI(
-    title="Biometric Voting Terminal",
-    version="1.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 STATIC_DIR = os.path.join(ROOT_DIR, "frontend", "static")
 VOTER_DB_DIR = os.path.join(ROOT_DIR, "data", "voter_db")
