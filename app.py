@@ -297,10 +297,11 @@ try:
 except Exception:
     pass
 
-if os.path.exists(STATIC_DIR):
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-if os.path.exists(VOTER_DB_DIR):
-    app.mount("/voter_db", StaticFiles(directory=VOTER_DB_DIR), name="voter_db")
+if not os.environ.get("VERCEL"):
+    if os.path.exists(STATIC_DIR):
+        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    if os.path.exists(VOTER_DB_DIR):
+        app.mount("/voter_db", StaticFiles(directory=VOTER_DB_DIR), name="voter_db")
 
 VOTERS_FILE = os.path.join(ROOT_DIR, "data", "voters.json")
 CANDIDATES_FILE = os.path.join(ROOT_DIR, "data", "candidates.json")
