@@ -106,60 +106,73 @@
         <p class="screen-desc">Look directly into the camera sensor for facial verification</p>
       </div>
 
-        <div class="video-frame-box" style="position: relative;">
-          <video id="client-webcam-feed" autoplay playsinline muted style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 12px;"></video>
-          <canvas id="face-hud-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; border-radius: 12px;"></canvas>
-          <img id="server-mjpeg-stream" src="/video_feed" class="video-stream" alt="Live Camera Feed">
-          <div class="video-overlay-elements">
-            <span class="badge pulse success" id="badge-cam-feed-status">CAMERA ACTIVE</span>
-            <span class="badge" id="face-scan-status">ALIGNING</span>
+      <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 14px;">
+        <button type="button" id="btn-cam-source-laptop" class="source-toggle-btn active" onclick="setCameraSource('laptop')" style="padding: 6px 14px; font-size: 0.82rem; font-weight: 600; border-radius: 8px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.15); color: #38bdf8; cursor: pointer; transition: all 0.2s;">
+          💻 Laptop Webcam
+        </button>
+        <button type="button" id="btn-cam-source-pi" class="source-toggle-btn" onclick="setCameraSource('pi')" style="padding: 6px 14px; font-size: 0.82rem; font-weight: 600; border-radius: 8px; border: 1px solid #334155; background: rgba(15, 23, 42, 0.6); color: #94a3b8; cursor: pointer; transition: all 0.2s;">
+          🍓 Raspberry Pi Camera
+        </button>
+      </div>
+
+      <div class="video-frame-box" style="position: relative;">
+        <video id="client-webcam-feed" autoplay playsinline muted style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 12px;"></video>
+        <canvas id="face-hud-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; border-radius: 12px;"></canvas>
+        <img id="server-mjpeg-stream" src="/video_feed" class="video-stream" alt="Live Camera Feed">
+        <div class="video-overlay-elements">
+          <span class="badge pulse success" id="badge-cam-feed-status">CAMERA ACTIVE</span>
+          <span class="badge" id="face-scan-status">ALIGNING</span>
+        </div>
+      </div>
+
+      <div class="voter-profile-panel">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <img id="hud-voter-photo" src="" alt="Voter Photo" class="voter-photo-preview">
+          <div>
+            <h3 id="hud-voter-name" style="font-size: 1.15rem; font-weight: 700; color: #fff;">--</h3>
+            <p id="hud-voter-epic" style="font-size: 0.85rem; color: var(--accent-cyan); font-weight: 600;">--</p>
+            <p id="hud-voter-constituency" style="font-size: 0.75rem; color: var(--text-muted);">--</p>
           </div>
         </div>
 
-        <div class="voter-profile-panel">
-          <div style="display: flex; align-items: center; gap: 16px;">
-            <img id="hud-voter-photo" src="" alt="Voter Photo" class="voter-photo-preview">
-            <div>
-              <h3 id="hud-voter-name" style="font-size: 1.15rem; font-weight: 700; color: #fff;">--</h3>
-              <p id="hud-voter-epic" style="font-size: 0.85rem; color: var(--accent-cyan); font-weight: 600;">--</p>
-              <p id="hud-voter-constituency" style="font-size: 0.75rem; color: var(--text-muted);">--</p>
-            </div>
+        <div class="auto-detect-box" id="auto-detect-container" style="background: rgba(15, 23, 42, 0.7); border: 1px solid #334155; padding: 12px; border-radius: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span id="auto-detect-label" style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">Scanning for live face...</span>
+            <span id="auto-detect-percent" style="font-size: 0.85rem; font-weight: 700; color: #34d399;">0%</span>
           </div>
-
-          <div class="auto-detect-box" id="auto-detect-container" style="background: rgba(15, 23, 42, 0.7); border: 1px solid #334155; padding: 12px; border-radius: 10px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-              <span id="auto-detect-label" style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">Scanning for live face...</span>
-              <span id="auto-detect-percent" style="font-size: 0.85rem; font-weight: 700; color: #34d399;">0%</span>
-            </div>
-            <div class="progress-track" style="height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
-              <div class="progress-fill" id="auto-detect-progress" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #34d399); transition: width 0.2s ease;"></div>
-            </div>
-            <p style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; margin-bottom: 0;">Face will automatically verify once centered and held still.</p>
+          <div class="progress-track" style="height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
+            <div class="progress-fill" id="auto-detect-progress" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #34d399); transition: width 0.2s ease;"></div>
           </div>
+          <p id="auto-detect-instruction" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; margin-bottom: 0;">Face will automatically verify once centered and held still.</p>
+        </div>
 
-          <div class="metric-bar-group">
-            <div class="metric-header">
-              <span>Similarity Score</span>
-              <span id="face-confidence-text" style="color: #34d399; font-weight: bold;">--%</span>
-            </div>
-            <div class="progress-track">
-              <div class="progress-fill" id="face-confidence-fill"></div>
-            </div>
+        <div class="metric-bar-group">
+          <div class="metric-header">
+            <span>Similarity Score</span>
+            <span id="face-confidence-text" style="color: #34d399; font-weight: bold;">--%</span>
           </div>
-
-          <div style="background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 10px; border: 1px solid #1e293b;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span>Anti-Spoofing:</span>
-              <span style="color: #34d399; font-weight: bold;" id="hud-liveness-tag">ACTIVE (LIVE ONLY)</span>
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
-              <span>Detection:</span>
-              <span style="color: #60a5fa;">Automatic Real-Face</span>
-            </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="face-confidence-fill"></div>
           </div>
+        </div>
 
-          <button class="btn-primary" id="btn-capture-face" style="width: 100%; justify-content: center;" onclick="triggerFaceVerify()">
+        <div style="background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 10px; border: 1px solid #1e293b;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Anti-Spoofing:</span>
+            <span style="color: #34d399; font-weight: bold;" id="hud-liveness-tag">ACTIVE (LIVE ONLY)</span>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+            <span>Active Camera:</span>
+            <span style="color: #60a5fa;" id="active-camera-label">Laptop HD Webcam</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; width: 100%;">
+          <button class="btn-primary" id="btn-capture-face" style="flex: 1; justify-content: center;" onclick="triggerFaceVerify()">
             Capture & Authenticate Face →
+          </button>
+          <button class="btn-primary" id="btn-capture-pi-camera" style="display: none; flex: 1; justify-content: center; background: linear-gradient(135deg, #059669, #10b981);" onclick="triggerPiCameraCaptureAndVerify()">
+            🍓 Capture from Pi & Verify →
           </button>
         </div>
       </div>

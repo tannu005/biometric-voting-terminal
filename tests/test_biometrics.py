@@ -68,6 +68,29 @@ class TestFacialVerification(unittest.TestCase):
             self.assertEqual(status, "FACE_DETECTED")
             self.assertGreaterEqual(liveness, 0.50)
 
+    def test_strict_facial_verification_genuine_vs_imposter(self):
+        import cv2
+        p1 = os.path.join(ROOT_DIR, "data", "voter_db", "VOTE-IND-2026-001.jpg")
+        p2 = os.path.join(ROOT_DIR, "data", "voter_db", "VOTE-IND-2026-002.jpg")
+        if os.path.exists(p1) and os.path.exists(p2):
+            img1 = cv2.imread(p1)
+            img2 = cv2.imread(p2)
+
+            res_genuine = self.pipe.verify_voter_face("VOTE-IND-2026-001", snapshot_frame=img1)
+            self.assertEqual(res_genuine["status"], "MATCH_SUCCESS")
+            self.assertGreaterEqual(res_genuine["match_score"], 75.0)
+
+            res_imposter = self.pipe.verify_voter_face("VOTE-IND-2026-001", snapshot_frame=img2)
+            self.assertEqual(res_imposter["status"], "MATCH_FAIL")
+            self.assertLess(res_imposter["match_score"], 50.0)
+
+    def test_blank_snapshot_rejection(self):
+        blank = np.zeros((480, 640, 3), dtype=np.uint8)
+        res_blank = self.pipe.verify_voter_face("VOTE-IND-2026-001", snapshot_frame=blank)
+        self.assertEqual(res_blank["status"], "MATCH_FAIL")
+        self.assertEqual(res_blank["match_score"], 0.0)
+        self.assertIn("No face detected", res_blank["message"])
+
 
 class TestCryptographicDecoupling(unittest.TestCase):
     def setUp(self):
@@ -162,6 +185,20 @@ class TestEndToEndKioskAPI(unittest.TestCase):
         r_lookup_again = self.client.post("/api/voter/lookup", json={"epic": test_epic})
         self.assertEqual(r_lookup_again.status_code, 409)
         self.assertEqual(r_lookup_again.json()["detail"]["error"], "ALREADY_VOTED")
+
+    def test_api_face_verify_rejects_missing_or_blank(self):
+        test_epic = "VOTE-IND-2026-002"
+        self.client.post("/api/voter/lookup", json={"epic": test_epic})
+        r_empty = self.client.post("/api/biometrics/face-verify", json={"epic": test_epic})
+        self.assertEqual(r_empty.status_code, 200)
+        self.assertEqual(r_empty.json()["verification"]["status"], "MATCH_FAIL")
+        self.assertFalse(r_empty.json()["session_status"]["is_fully_validated"])
+
+    def test_pi_camera_endpoint_handles_connection(self):
+        r_pi = self.client.post("/api/biometrics/pi-camera-capture")
+        self.assertEqual(r_pi.status_code, 200)
+        data = r_pi.json()
+        self.assertIn("success", data)
 
 
 if __name__ == "__main__":

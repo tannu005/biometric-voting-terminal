@@ -390,6 +390,129 @@ function drawFaceTrackingHUD(canvas, box, isSuccess) {
   ctx.stroke();
 }
 
+let currentCameraSource = 'laptop';
+
+function setCameraSource(source) {
+  currentCameraSource = source;
+  const btnLaptop = document.getElementById('btn-cam-source-laptop');
+  const btnPi = document.getElementById('btn-cam-source-pi');
+  const videoEl = document.getElementById('client-webcam-feed');
+  const hudCanvas = document.getElementById('face-hud-canvas');
+  const imgEl = document.getElementById('server-mjpeg-stream');
+  const btnCaptureFace = document.getElementById('btn-capture-face');
+  const btnCapturePi = document.getElementById('btn-capture-pi-camera');
+  const activeCamLabel = document.getElementById('active-camera-label');
+  const autoDetectInstruction = document.getElementById('auto-detect-instruction');
+  const statusBadge = document.getElementById('badge-cam-feed-status');
+
+  if (source === 'laptop') {
+    if (btnLaptop) {
+      btnLaptop.style.border = '1px solid #38bdf8';
+      btnLaptop.style.background = 'rgba(56, 189, 248, 0.15)';
+      btnLaptop.style.color = '#38bdf8';
+    }
+    if (btnPi) {
+      btnPi.style.border = '1px solid #334155';
+      btnPi.style.background = 'rgba(15, 23, 42, 0.6)';
+      btnPi.style.color = '#94a3b8';
+    }
+    if (activeCamLabel) activeCamLabel.innerText = 'Laptop HD Webcam';
+    if (btnCaptureFace) btnCaptureFace.style.display = 'flex';
+    if (btnCapturePi) btnCapturePi.style.display = 'none';
+    if (autoDetectInstruction) autoDetectInstruction.innerText = 'Face will automatically verify once centered and held still.';
+
+    initWebcamStream();
+    startAutomaticFaceTracker();
+  } else {
+    stopAutomaticFaceTracker();
+    if (btnLaptop) {
+      btnLaptop.style.border = '1px solid #334155';
+      btnLaptop.style.background = 'rgba(15, 23, 42, 0.6)';
+      btnLaptop.style.color = '#94a3b8';
+    }
+    if (btnPi) {
+      btnPi.style.border = '1px solid #10b981';
+      btnPi.style.background = 'rgba(16, 185, 129, 0.15)';
+      btnPi.style.color = '#34d399';
+    }
+    if (activeCamLabel) activeCamLabel.innerText = 'Raspberry Pi Camera (192.168.50.2)';
+    if (btnCaptureFace) btnCaptureFace.style.display = 'none';
+    if (btnCapturePi) btnCapturePi.style.display = 'flex';
+    if (autoDetectInstruction) autoDetectInstruction.innerText = 'Click the Pi capture button or face Pi camera lens to authenticate.';
+    if (statusBadge) {
+      statusBadge.className = 'badge';
+      statusBadge.innerText = 'PI CAMERA SELECTED';
+    }
+  }
+}
+
+async function triggerPiCameraCaptureAndVerify() {
+  const piBtn = document.getElementById('btn-capture-pi-camera');
+  const statusBadge = document.getElementById('face-scan-status');
+  const label = document.getElementById('auto-detect-label');
+
+  if (piBtn) {
+    piBtn.disabled = true;
+    piBtn.innerText = 'Fetching Frame from Pi Camera...';
+  }
+  if (statusBadge) statusBadge.innerText = 'CAPTURING PI CAMERA';
+  if (label) label.innerText = 'Querying Raspberry Pi camera at 192.168.50.2:8000/camera/capture...';
+
+  try {
+    const resp = await fetch('/api/biometrics/pi-camera-capture', { method: 'POST' });
+    const data = await resp.json();
+    if (!data.success || !data.image_data) {
+      audio.errorTone();
+      if (label) label.innerText = '⚠️ ' + (data.message || 'Raspberry Pi camera capture failed.');
+      if (statusBadge) {
+        statusBadge.className = 'badge';
+        statusBadge.style.borderColor = 'var(--accent-rose)';
+        statusBadge.style.color = 'var(--accent-rose)';
+        statusBadge.innerText = 'PI CAM UNAVAILABLE';
+      }
+      if (piBtn) {
+        piBtn.disabled = false;
+        piBtn.innerText = '🍓 Capture from Pi & Verify →';
+      }
+      return;
+    }
+
+    const imgEl = document.getElementById('server-mjpeg-stream');
+    const videoEl = document.getElementById('client-webcam-feed');
+    if (imgEl && data.image_data) {
+      imgEl.src = data.image_data;
+      imgEl.style.display = 'block';
+      if (videoEl) videoEl.style.display = 'none';
+    }
+
+    if (!data.detection || !data.detection.detected) {
+      audio.errorTone();
+      if (label) label.innerText = '⚠️ No human face detected in Pi camera capture. Please face the lens directly.';
+      if (statusBadge) {
+        statusBadge.className = 'badge';
+        statusBadge.style.borderColor = 'var(--accent-rose)';
+        statusBadge.style.color = 'var(--accent-rose)';
+        statusBadge.innerText = 'NO FACE FOUND';
+      }
+      if (piBtn) {
+        piBtn.disabled = false;
+        piBtn.innerText = '🍓 Capture from Pi & Verify →';
+      }
+      return;
+    }
+
+    if (label) label.innerText = 'Face detected in Pi capture. Verifying with FaceNet...';
+    await executeFaceVerification(data.image_data);
+  } catch (err) {
+    audio.errorTone();
+    if (label) label.innerText = '⚠️ Error querying Pi camera: ' + err.message;
+    if (piBtn) {
+      piBtn.disabled = false;
+      piBtn.innerText = '🍓 Capture from Pi & Verify →';
+    }
+  }
+}
+
 function startAutomaticFaceTracker() {
   stopAutomaticFaceTracker();
   faceHoldStreak = 0;
@@ -403,7 +526,7 @@ function startAutomaticFaceTracker() {
   const statusBadge = document.getElementById('face-scan-status');
 
   faceTrackerInterval = setInterval(async () => {
-    if (KioskState.currentStep !== 2 || isVerifyingFace) return;
+    if (KioskState.currentStep !== 2 || isVerifyingFace || currentCameraSource !== 'laptop') return;
     if (!videoEl || !videoEl.videoWidth) return;
 
     if (hudCanvas && (hudCanvas.width !== videoEl.clientWidth || hudCanvas.height !== videoEl.clientHeight)) {
@@ -449,7 +572,12 @@ function startAutomaticFaceTracker() {
           if (statusBadge) statusBadge.innerText = 'AUTHENTICATING';
 
           const fullFrame = captureWebcamFrameBase64(videoEl);
-          await executeFaceVerification(fullFrame);
+          if (fullFrame) {
+            await executeFaceVerification(fullFrame);
+          } else {
+            isVerifyingFace = false;
+            startAutomaticFaceTracker();
+          }
         }
       } else {
         faceHoldStreak = 0;
@@ -476,6 +604,7 @@ function stopAutomaticFaceTracker() {
 
 async function executeFaceVerification(imageData) {
   const scanBtn = document.getElementById('btn-capture-face');
+  const piBtn = document.getElementById('btn-capture-pi-camera');
   const statusBadge = document.getElementById('face-scan-status');
   const confidenceFill = document.getElementById('face-confidence-fill');
   const confidenceText = document.getElementById('face-confidence-text');
@@ -484,6 +613,10 @@ async function executeFaceVerification(imageData) {
   if (scanBtn) {
     scanBtn.disabled = true;
     scanBtn.innerText = 'Analyzing Biometric Features...';
+  }
+  if (piBtn) {
+    piBtn.disabled = true;
+    piBtn.innerText = 'Analyzing Biometric Features...';
   }
   if (statusBadge) statusBadge.innerText = 'Evaluating Face...';
 
@@ -498,7 +631,7 @@ async function executeFaceVerification(imageData) {
     });
 
     const data = await resp.json();
-    const ver = data.verification;
+    const ver = data.verification || {};
 
     if (ver.status === 'MATCH_SUCCESS') {
       audio.successChord();
@@ -528,30 +661,43 @@ async function executeFaceVerification(imageData) {
       if (label) label.innerText = '⚠️ ' + (ver.message || 'Face match rejected');
       if (scanBtn) {
         scanBtn.disabled = false;
-        scanBtn.innerText = 'Retry Facial Verification';
+        scanBtn.innerText = 'Capture & Authenticate Face →';
+      }
+      if (piBtn) {
+        piBtn.disabled = false;
+        piBtn.innerText = '🍓 Capture from Pi & Verify →';
       }
 
       setTimeout(() => {
         isVerifyingFace = false;
-        if (KioskState.currentStep === 2) {
+        if (KioskState.currentStep === 2 && currentCameraSource === 'laptop') {
           startAutomaticFaceTracker();
         }
       }, 2500);
     }
   } catch (err) {
-    audio.successChord();
-    const score = 96.4;
-    if (confidenceFill) confidenceFill.style.width = score + '%';
-    if (confidenceText) confidenceText.innerText = score + '%';
+    audio.errorTone();
     if (statusBadge) {
-      statusBadge.className = 'badge success';
-      statusBadge.innerText = 'VERIFIED: ' + score + '%';
+      statusBadge.className = 'badge';
+      statusBadge.style.borderColor = 'var(--accent-rose)';
+      statusBadge.style.color = 'var(--accent-rose)';
+      statusBadge.innerText = 'SERVICE ERROR';
     }
-    if (label) label.innerText = '✓ Identity Verified (Edge Biometric Match)';
-    updatePiDisplay('Face Verified\nAdvance Step 3');
+    if (label) label.innerText = '⚠️ Facial verification error. Please face the camera and try again.';
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.innerText = 'Capture & Authenticate Face →';
+    }
+    if (piBtn) {
+      piBtn.disabled = false;
+      piBtn.innerText = '🍓 Capture from Pi & Verify →';
+    }
     setTimeout(() => {
-      setScreenState(3);
-    }, 1200);
+      isVerifyingFace = false;
+      if (KioskState.currentStep === 2 && currentCameraSource === 'laptop') {
+        startAutomaticFaceTracker();
+      }
+    }, 2500);
   }
 }
 
@@ -559,6 +705,12 @@ async function triggerFaceVerify() {
   audio.beep(600, 0.08);
   const videoEl = document.getElementById('client-webcam-feed');
   const frame = captureWebcamFrameBase64(videoEl);
+  if (!frame) {
+    audio.errorTone();
+    const label = document.getElementById('auto-detect-label');
+    if (label) label.innerText = '⚠️ No webcam feed available. Please allow camera permissions.';
+    return;
+  }
   stopAutomaticFaceTracker();
   isVerifyingFace = true;
   await executeFaceVerification(frame);

@@ -158,15 +158,28 @@ class SafeFusionEngine:
 
     def process_facial_verification(self, voter_epic: str, snapshot_frame: Optional[Any] = None, force_mock: Optional[bool] = None) -> Dict[str, Any]:
         session = self.active_sessions.get(voter_epic) or self.start_session(voter_epic)
-        face_eval = {
-            "status": "MATCH_SUCCESS",
-            "match_score": 96.5,
-            "verified": True,
-            "liveness": True,
-            "liveness_pass": True,
-            "mode": "EDGE_CLOUD_AI",
-            "message": "Facial geometry verified against EPIC registry."
-        }
+        if 'face_pipeline' in globals() and hasattr(face_pipeline, 'verify_voter_face'):
+            face_eval = face_pipeline.verify_voter_face(voter_epic, snapshot_frame=snapshot_frame, force_mock=force_mock)
+        elif force_mock:
+            face_eval = {
+                "status": "MATCH_SUCCESS",
+                "match_score": 96.5,
+                "verified": True,
+                "liveness": True,
+                "liveness_pass": True,
+                "mode": "EDGE_CLOUD_AI",
+                "message": "Facial geometry verified against EPIC registry."
+            }
+        else:
+            face_eval = {
+                "status": "MATCH_FAIL",
+                "match_score": 0.0,
+                "verified": False,
+                "liveness": False,
+                "liveness_pass": False,
+                "mode": "FAIL_SAFE",
+                "message": "No face verification pipeline available or no valid face frame provided."
+            }
         session["face_result"] = face_eval
         self._evaluate_consensus(session)
         return face_eval
@@ -256,15 +269,42 @@ class SafeFacePipeline:
         return False
 
     def detect_live_face_quick(self, frame: Any) -> Dict[str, Any]:
+        if frame is None or getattr(frame, "size", 0) == 0:
+            return {
+                "detected": False,
+                "faces_count": 0,
+                "box": None,
+                "eyes_detected": False,
+                "liveness_pass": False,
+                "liveness_score": 0.0,
+                "status": "NO_FACE",
+                "message": "No face detected in camera view"
+            }
+        try:
+            if hasattr(frame, "shape") and cv2 is not None:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                if float(np.mean(gray)) < 15.0 or float(np.std(gray)) < 12.0:
+                    return {
+                        "detected": False,
+                        "faces_count": 0,
+                        "box": None,
+                        "eyes_detected": False,
+                        "liveness_pass": False,
+                        "liveness_score": 0.0,
+                        "status": "NO_FACE",
+                        "message": "No face detected in camera view"
+                    }
+        except Exception:
+            pass
         return {
-            "detected": True,
-            "faces_count": 1,
-            "box": [40, 40, 240, 240],
-            "eyes_detected": True,
-            "liveness_pass": True,
-            "liveness_score": 0.94,
-            "status": "FACE_TRACKING_OK",
-            "message": "Live face tracking active"
+            "detected": False,
+            "faces_count": 0,
+            "box": None,
+            "eyes_detected": False,
+            "liveness_pass": False,
+            "liveness_score": 0.0,
+            "status": "NO_FACE",
+            "message": "No face detected in camera view"
         }
 
 IS_VERCEL = bool(os.environ.get("VERCEL"))
@@ -272,13 +312,22 @@ IS_VERCEL = bool(os.environ.get("VERCEL"))
 if not IS_VERCEL:
     try:
         from hardware.as608 import as608_sensor
-        from biometrics.face_verify import face_pipeline
-        from biometrics.fusion_engine import fusion_engine
-        from backend.crypto_utils import crypto_engine
-    except Exception as e:
+    except Exception:
         as608_sensor = SafeAS608Driver()
+
+    try:
+        from biometrics.face_verify import face_pipeline
+    except Exception:
         face_pipeline = SafeFacePipeline()
+
+    try:
+        from biometrics.fusion_engine import fusion_engine
+    except Exception:
         fusion_engine = SafeFusionEngine()
+
+    try:
+        from backend.crypto_utils import crypto_engine
+    except Exception:
         crypto_engine = SafeCryptoEngine()
 else:
     as608_sensor = SafeAS608Driver()
@@ -530,30 +579,61 @@ async def detect_live_face(req: FaceDetectRequest):
         nparr = np.frombuffer(img_bytes, np.uint8)
         if cv2 is not None:
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if frame is not None:
+            if frame is not None and frame.size > 0:
                 return face_pipeline.detect_live_face_quick(frame)
-        return {
-            "detected": True,
-            "faces_count": 1,
-            "box": [40, 40, 240, 240],
-            "eyes_detected": True,
-            "liveness_pass": True,
-            "liveness_score": 0.94,
-            "status": "FACE_TRACKING_OK",
-            "message": "Live face tracking active"
-        }
     except Exception as e:
         logger.warning(f"Error in face-detect: {e}")
     return {
-        "detected": True,
-        "faces_count": 1,
-        "box": [40, 40, 240, 240],
-        "eyes_detected": True,
-        "liveness_pass": True,
-        "liveness_score": 0.94,
-        "status": "FACE_TRACKING_OK",
-        "message": "Live face tracking active"
+        "detected": False,
+        "faces_count": 0,
+        "box": None,
+        "eyes_detected": False,
+        "liveness_pass": False,
+        "liveness_score": 0.0,
+        "status": "NO_FACE",
+        "message": "No face detected in camera view"
     }
+
+@app.post("/api/biometrics/pi-camera-capture")
+async def capture_pi_camera():
+    try:
+        resp = requests.post(f"{PI_URL}/camera/capture", headers=PI_HEADERS, timeout=6.0)
+        if resp.status_code == 200 and resp.content:
+            raw_bytes = resp.content
+            b64_str = f"data:image/jpeg;base64,{base64.b64encode(raw_bytes).decode('utf-8')}"
+            detection = {
+                "detected": False,
+                "faces_count": 0,
+                "box": None,
+                "eyes_detected": False,
+                "liveness_pass": False,
+                "liveness_score": 0.0,
+                "status": "NO_FACE",
+                "message": "No face detected in Pi camera capture"
+            }
+            if cv2 is not None:
+                nparr = np.frombuffer(raw_bytes, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if frame is not None and frame.size > 0:
+                    detection = face_pipeline.detect_live_face_quick(frame)
+            return {
+                "success": True,
+                "image_data": b64_str,
+                "detection": detection,
+                "source": "raspberry_pi_camera"
+            }
+        else:
+            return {
+                "success": False,
+                "error": "PI_CAMERA_ERROR",
+                "message": f"Raspberry Pi camera returned status {resp.status_code}"
+            }
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": "PI_CAMERA_UNREACHABLE",
+            "message": f"Could not connect to Raspberry Pi camera at {PI_URL}: {exc}"
+        }
 
 @app.post("/api/biometrics/face-verify")
 async def verify_face(req: FaceVerifyRequest):
