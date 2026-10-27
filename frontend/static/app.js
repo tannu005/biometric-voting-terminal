@@ -193,8 +193,11 @@ function setScreenState(stepNumber) {
     updatePiDisplay("Fingerprint Scan\nTouch Sensor");
   } else if (stepNumber === 3) {
     updatePiDisplay("Facial Scan\nLook at Camera");
-    initWebcamStream();
-    startAutomaticFaceTracker();
+    if (isPiOnline && currentCameraSource !== 'laptop_user_override') {
+      setCameraSource('pi');
+    } else {
+      setCameraSource('laptop');
+    }
   } else if (stepNumber === 4) {
     stopAutomaticFaceTracker();
     updatePiDisplay("Select Candidate\nPress Switch");
@@ -390,10 +393,15 @@ function drawFaceTrackingHUD(canvas, box, isSuccess) {
   ctx.stroke();
 }
 
-let currentCameraSource = 'laptop';
+let isPiOnline = false;
+let currentCameraSource = 'pi';
 
-function setCameraSource(source) {
-  currentCameraSource = source;
+function setCameraSource(source, isUserAction = false) {
+  if (isUserAction) {
+    currentCameraSource = (source === 'laptop') ? 'laptop_user_override' : 'pi';
+  } else if (currentCameraSource !== 'laptop_user_override') {
+    currentCameraSource = source;
+  }
   const btnLaptop = document.getElementById('btn-cam-source-laptop');
   const btnPi = document.getElementById('btn-cam-source-pi');
   const videoEl = document.getElementById('client-webcam-feed');
@@ -425,6 +433,19 @@ function setCameraSource(source) {
     startAutomaticFaceTracker();
   } else {
     stopAutomaticFaceTracker();
+    if (clientStream) {
+      try {
+        clientStream.getTracks().forEach(t => t.stop());
+      } catch (e) {}
+      clientStream = null;
+    }
+    if (videoEl) videoEl.style.display = 'none';
+    if (hudCanvas) {
+      const ctx = hudCanvas.getContext('2d');
+      ctx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    }
+    if (imgEl) imgEl.style.display = 'block';
+
     if (btnLaptop) {
       btnLaptop.style.border = '1px solid #334155';
       btnLaptop.style.background = 'rgba(15, 23, 42, 0.6)';
@@ -435,13 +456,17 @@ function setCameraSource(source) {
       btnPi.style.background = 'rgba(16, 185, 129, 0.15)';
       btnPi.style.color = '#34d399';
     }
-    if (activeCamLabel) activeCamLabel.innerText = 'Raspberry Pi Camera (192.168.50.2)';
+    if (activeCamLabel) activeCamLabel.innerText = 'Raspberry Pi Camera (picamera2)';
     if (btnCaptureFace) btnCaptureFace.style.display = 'none';
-    if (btnCapturePi) btnCapturePi.style.display = 'flex';
-    if (autoDetectInstruction) autoDetectInstruction.innerText = 'Click the Pi capture button or face Pi camera lens to authenticate.';
+    if (btnCapturePi) {
+      btnCapturePi.style.display = 'flex';
+      btnCapturePi.disabled = false;
+      btnCapturePi.innerText = '🍓 Capture from Pi & Verify →';
+    }
+    if (autoDetectInstruction) autoDetectInstruction.innerText = 'Look directly into Raspberry Pi camera lens and click button below (or press Pi Switch 3).';
     if (statusBadge) {
-      statusBadge.className = 'badge';
-      statusBadge.innerText = 'PI CAMERA SELECTED';
+      statusBadge.className = 'badge success';
+      statusBadge.innerText = 'PI CAMERA ACTIVE';
     }
   }
 }
@@ -1147,18 +1172,25 @@ async function checkSystemDiagnostic() {
       const hwData = await hwResp.json();
       if (piBadge) {
         if (hwData.connected && hwData.pi?.status === 'READY') {
+          isPiOnline = true;
           piBadge.innerText = "PI: ONLINE";
           piBadge.classList.add('success');
+          if (KioskState.currentStep === 3 && currentCameraSource !== 'pi' && currentCameraSource !== 'laptop_user_override') {
+            setCameraSource('pi');
+          }
         } else {
+          isPiOnline = false;
           piBadge.innerText = "PI: LOCAL MODE";
           piBadge.classList.remove('success');
         }
       }
     } else if (piBadge) {
+      isPiOnline = false;
       piBadge.innerText = "PI: LOCAL MODE";
       piBadge.classList.remove('success');
     }
   } catch (e) {
+    isPiOnline = false;
     const piBadge = document.getElementById('badge-pi-status');
     if (piBadge) {
       piBadge.innerText = "PI: LOCAL MODE";
@@ -1196,11 +1228,11 @@ function handlePhysicalSwitchEvent(switchName) {
     }
   } else if (currentScreen === 2) {
     if (switchName === 'switch_3') {
-      triggerFacialVerification();
+      triggerRpiR307SFingerprint();
     }
   } else if (currentScreen === 3) {
     if (switchName === 'switch_3') {
-      triggerRpiR307SFingerprint();
+      triggerPiCameraCaptureAndVerify();
     }
   } else if (currentScreen === 4) {
     const modal = document.getElementById('vote-modal');
@@ -1387,12 +1419,85 @@ function stopRegistrationCam() {
   }
 }
 
+async function captureRegistrationPiCamera() {
+  audio.beep(850, 0.08);
+  const badge = document.getElementById('reg-face-badge');
+  const btnPi = document.getElementById('btn-reg-capture-pi');
+  const btnCapture = document.getElementById('btn-reg-capture-face');
+  const btnRetake = document.getElementById('btn-reg-retake-face');
+  const canvas = document.getElementById('reg-cam-canvas');
+  const video = document.getElementById('reg-cam-video');
+
+  if (btnPi) {
+    btnPi.disabled = true;
+    btnPi.innerText = "Capturing Pi...";
+  }
+  if (badge) {
+    badge.className = 'badge';
+    badge.innerText = 'QUERYING PI CAMERA...';
+  }
+
+  try {
+    updatePiDisplay("Capturing Photo\nLook at Camera");
+    const resp = await fetch('/api/biometrics/pi-camera-capture', { method: 'POST' });
+    const data = await resp.json();
+
+    if (!data.success || !data.image_data) {
+      audio.errorTone();
+      alert("Failed to capture from Pi camera: " + (data.message || "Camera busy or unreachable"));
+      if (badge) {
+        badge.className = 'badge';
+        badge.innerText = 'PI CAM FAILED';
+      }
+      return;
+    }
+
+    regCapturedPhotoBase64 = data.image_data;
+    stopRegistrationCam();
+
+    const img = new Image();
+    img.onload = () => {
+      if (canvas) {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        if (video) video.style.display = 'none';
+        canvas.style.display = 'block';
+      }
+      if (badge) {
+        badge.className = 'badge success';
+        badge.innerText = 'PI PHOTO CAPTURED';
+      }
+      if (btnCapture) btnCapture.style.display = 'none';
+      if (btnPi) btnPi.style.display = 'none';
+      if (btnRetake) btnRetake.style.display = 'inline-block';
+      audio.successTone();
+      updatePiDisplay("Photo Captured\nSuccess");
+    };
+    img.src = data.image_data;
+  } catch (err) {
+    audio.errorTone();
+    alert("Error communicating with Pi camera: " + err.message);
+    if (badge) {
+      badge.className = 'badge';
+      badge.innerText = 'ERROR';
+    }
+  } finally {
+    if (btnPi) {
+      btnPi.disabled = false;
+      btnPi.innerText = "🍓 Snap with Pi Cam";
+    }
+  }
+}
+
 function captureRegistrationFace() {
   audio.beep(900, 0.08);
   const video = document.getElementById('reg-cam-video');
   const canvas = document.getElementById('reg-cam-canvas');
   const badge = document.getElementById('reg-face-badge');
   const btnCapture = document.getElementById('btn-reg-capture-face');
+  const btnPi = document.getElementById('btn-reg-capture-pi');
   const btnRetake = document.getElementById('btn-reg-retake-face');
 
   if (!video || !canvas) return;
@@ -1412,6 +1517,7 @@ function captureRegistrationFace() {
     badge.innerText = 'PHOTO CAPTURED';
   }
   if (btnCapture) btnCapture.style.display = 'none';
+  if (btnPi) btnPi.style.display = 'none';
   if (btnRetake) btnRetake.style.display = 'inline-block';
 }
 
@@ -1420,6 +1526,7 @@ function retakeRegistrationFace() {
   const canvas = document.getElementById('reg-cam-canvas');
   const badge = document.getElementById('reg-face-badge');
   const btnCapture = document.getElementById('btn-reg-capture-face');
+  const btnPi = document.getElementById('btn-reg-capture-pi');
   const btnRetake = document.getElementById('btn-reg-retake-face');
 
   regCapturedPhotoBase64 = null;
@@ -1431,7 +1538,10 @@ function retakeRegistrationFace() {
     badge.innerText = 'NOT CAPTURED';
   }
   if (btnCapture) btnCapture.style.display = 'inline-block';
+  if (btnPi) btnPi.style.display = 'inline-block';
   if (btnRetake) btnRetake.style.display = 'none';
+
+  initRegistrationCam();
 }
 
 function handleRegistrationPhotoUpload(event) {
@@ -1445,6 +1555,7 @@ function handleRegistrationPhotoUpload(event) {
     const video = document.getElementById('reg-cam-video');
     const badge = document.getElementById('reg-face-badge');
     const btnCapture = document.getElementById('btn-reg-capture-face');
+    const btnPi = document.getElementById('btn-reg-capture-pi');
     const btnRetake = document.getElementById('btn-reg-retake-face');
 
     const img = new Image();
@@ -1462,9 +1573,10 @@ function handleRegistrationPhotoUpload(event) {
         badge.innerText = 'PHOTO UPLOADED';
       }
       if (btnCapture) btnCapture.style.display = 'none';
+      if (btnPi) btnPi.style.display = 'none';
       if (btnRetake) btnRetake.style.display = 'inline-block';
     };
-    img.src = regCapturedPhotoBase64;
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }

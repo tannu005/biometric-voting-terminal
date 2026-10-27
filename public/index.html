@@ -153,11 +153,11 @@
       </div>
 
       <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 14px;">
-        <button type="button" id="btn-cam-source-laptop" class="source-toggle-btn active" onclick="setCameraSource('laptop')" style="padding: 6px 14px; font-size: 0.82rem; font-weight: 600; border-radius: 8px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.15); color: #38bdf8; cursor: pointer; transition: all 0.2s;">
-          💻 Laptop Webcam
-        </button>
-        <button type="button" id="btn-cam-source-pi" class="source-toggle-btn" onclick="setCameraSource('pi')" style="padding: 6px 14px; font-size: 0.82rem; font-weight: 600; border-radius: 8px; border: 1px solid #334155; background: rgba(15, 23, 42, 0.6); color: #94a3b8; cursor: pointer; transition: all 0.2s;">
+        <button type="button" id="btn-cam-source-pi" class="source-toggle-btn active" onclick="setCameraSource('pi', true)" style="padding: 6px 14px; font-size: 0.82rem; font-weight: 600; border-radius: 8px; border: 1px solid #10b981; background: rgba(16, 185, 129, 0.15); color: #34d399; cursor: pointer; transition: all 0.2s;">
           🍓 Raspberry Pi Camera
+        </button>
+        <button type="button" id="btn-cam-source-laptop" class="source-toggle-btn" onclick="setCameraSource('laptop', true)" style="padding: 6px 14px; font-size: 0.82rem; font-weight: 600; border-radius: 8px; border: 1px solid #334155; background: rgba(15, 23, 42, 0.6); color: #94a3b8; cursor: pointer; transition: all 0.2s;">
+          💻 Laptop Webcam
         </button>
       </div>
 
@@ -378,7 +378,8 @@
             </div>
 
             <div style="display: flex; gap: 8px; margin-top: 10px;">
-              <button type="button" class="btn-primary" id="btn-reg-capture-face" style="flex: 1; padding: 10px; font-size: 0.85rem;" onclick="captureRegistrationFace()">📸 Snap Photo</button>
+              <button type="button" class="btn-primary" id="btn-reg-capture-pi" style="flex: 1.2; padding: 10px; font-size: 0.85rem; background: linear-gradient(135deg, #10b981, #059669); border-radius: 8px; cursor: pointer;" onclick="captureRegistrationPiCamera()">🍓 Snap with Pi Cam</button>
+              <button type="button" class="btn-secondary" id="btn-reg-capture-face" style="flex: 1; padding: 10px; font-size: 0.85rem; background: #1e293b; border: 1px solid #475569; color: #f1f5f9; border-radius: 8px; cursor: pointer;" onclick="captureRegistrationFace()">💻 Laptop Cam</button>
               <button type="button" class="btn-secondary" id="btn-reg-retake-face" style="padding: 10px 14px; font-size: 0.85rem; display: none; background: #1e293b; border: 1px solid #475569; color: #f1f5f9; border-radius: 8px; cursor: pointer;" onclick="retakeRegistrationFace()">🔄 Retake</button>
               <label class="btn-secondary" style="padding: 10px 14px; font-size: 0.85rem; cursor: pointer; margin: 0; display: flex; align-items: center; background: #1e293b; border: 1px solid #475569; color: #38bdf8; border-radius: 8px;">
                 📁 Upload
