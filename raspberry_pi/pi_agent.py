@@ -33,30 +33,51 @@ events = queue.Queue()
 hardware_lock = threading.Lock()
 
 lcd = None
-try:
-    from RPLCD.i2c import CharLCD
-    lcd = CharLCD('PCF8574', address=0x27, port=1, cols=16, rows=2)
-    print('I2C LCD display initialized.')
-except Exception as exc:
-    print('LCD display unavailable:', exc)
+def init_lcd():
+    global lcd
+    try:
+        if lcd is not None:
+            try:
+                lcd.close(clear=False)
+            except Exception:
+                pass
+        from RPLCD.i2c import CharLCD
+        lcd = CharLCD('PCF8574', address=0x27, port=1, cols=16, rows=2, auto_linebreaks=False)
+        time.sleep(0.05)
+        print('I2C LCD display initialized.')
+        return True
+    except Exception as exc:
+        print('LCD display unavailable:', exc)
+        return False
+
+init_lcd()
 
 def show_message(message: str):
-    message = str(message).strip()
-    print(f'[LCD] {message}')
-    if lcd is not None:
+    global lcd
+    message = str(message or '')
+    print(f'[LCD] {message.replace(chr(10), " | ")}')
+    if lcd is None:
+        return
+
+    with hardware_lock:
         try:
-            lcd.clear()
-            lines = message.split(chr(10))
-            line1 = lines[0][:16]
-            lcd.write_string(line1)
-            if len(lines) > 1:
-                lcd.cursor_pos = (1, 0)
-                lcd.write_string(lines[1][:16])
-            elif len(message) > 16:
-                lcd.cursor_pos = (1, 0)
-                lcd.write_string(message[16:32])
+            lines = message.split('\n')
+            l1 = lines[0][:16] if len(lines) > 0 else ''
+            l2 = lines[1][:16] if len(lines) > 1 else (message[16:32] if len(message) > 16 else '')
+            # Pad exactly 16 characters per line - avoids clear() execution delay dropped-nibble bug
+            l1_fixed = f"{l1:<16}"[:16]
+            l2_fixed = f"{l2:<16}"[:16]
+
+            lcd.cursor_pos = (0, 0)
+            lcd.write_string(l1_fixed)
+            lcd.cursor_pos = (1, 0)
+            lcd.write_string(l2_fixed)
         except Exception as exc:
-            print('LCD write error:', exc)
+            print('LCD write error, reinitializing:', exc)
+            try:
+                init_lcd()
+            except Exception:
+                pass
 
 finger = None
 finger_init_error = None
@@ -153,6 +174,12 @@ def health(_auth: bool = Depends(authorize)):
 def display(request: DisplayRequest, _auth: bool = Depends(authorize)):
     show_message(request.message)
     return {'ok': True, 'message': request.message}
+
+@agent_app.api_route('/display/reset', methods=['GET', 'POST'])
+def reset_display(_auth: bool = Depends(authorize)):
+    init_lcd()
+    show_message('EVM Terminal\nEnter Voter ID')
+    return {'ok': True, 'message': 'LCD display reset and resynchronized'}
 
 @agent_app.post('/fingerprint/match')
 def fingerprint_match(_auth: bool = Depends(authorize)):

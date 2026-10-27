@@ -726,6 +726,12 @@ async def hardware_display(req: HardwareDisplayRequest):
     result = query_pi_hardware("POST", "/display", json={"message": req.message})
     return {"success": result is not None, "result": result}
 
+@app.api_route("/api/hardware/display-reset", methods=["GET", "POST"])
+@app.api_route("/hardware/display-reset", methods=["GET", "POST"])
+async def hardware_display_reset():
+    result = query_pi_hardware("POST", "/display/reset")
+    return {"success": result is not None, "result": result}
+
 @app.get("/api/hardware/events")
 @app.get("/hardware/events")
 async def hardware_events():
