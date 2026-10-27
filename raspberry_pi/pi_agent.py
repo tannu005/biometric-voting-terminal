@@ -271,7 +271,8 @@ def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(auth
             'message': f'Fingerprint enrolled and stored in Slot #{slot}'
         }
 
-@agent_app.post('/camera/capture')
+@agent_app.api_route('/camera/capture', methods=['GET', 'POST'])
+@agent_app.api_route('/camera/preview', methods=['GET', 'POST'])
 def capture_camera(_auth: bool = Depends(authorize)):
     if camera is None:
         raise HTTPException(status_code=503, detail=f'Camera unavailable: {camera_error}')

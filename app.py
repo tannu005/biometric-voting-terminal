@@ -758,11 +758,17 @@ async def detect_live_face(req: FaceDetectRequest):
         "message": "No face detected in camera view"
     }
 
+@app.get("/api/biometrics/pi-camera-capture")
 @app.post("/api/biometrics/pi-camera-capture")
+@app.get("/api/biometrics/pi-camera-preview")
+@app.post("/api/biometrics/pi-camera-preview")
+@app.get("/biometrics/pi-camera-capture")
 @app.post("/biometrics/pi-camera-capture")
+@app.get("/biometrics/pi-camera-preview")
+@app.post("/biometrics/pi-camera-preview")
 async def capture_pi_camera():
     try:
-        resp = requests.post(f"{PI_URL}/camera/capture", headers=PI_HEADERS, timeout=6.0)
+        resp = requests.post(f"{PI_URL}/camera/capture", headers=PI_HEADERS, timeout=9.0)
         if resp.status_code == 200 and resp.content:
             raw_bytes = resp.content
             b64_str = f"data:image/jpeg;base64,{base64.b64encode(raw_bytes).decode('utf-8')}"

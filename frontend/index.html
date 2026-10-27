@@ -162,12 +162,20 @@
       </div>
 
       <div class="video-frame-box" style="position: relative;">
+        <div id="pi-cam-viewfinder-overlay" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.98) 100%); border-radius: 12px; text-align: center; padding: 20px; z-index: 2;">
+          <div style="font-size: 3rem; margin-bottom: 10px; filter: drop-shadow(0 0 16px rgba(16,185,129,0.4));">🍓</div>
+          <div style="font-size: 1.05rem; font-weight: 700; color: #34d399; letter-spacing: 0.5px;">RASPBERRY PI CAMERA READY</div>
+          <div style="font-size: 0.8rem; color: #94a3b8; max-width: 380px; margin-top: 8px; line-height: 1.4;">
+            Please look straight at the physical Raspberry Pi camera lens.<br>
+            Click <strong style="color: #fff;">"Capture from Pi &amp; Verify"</strong> below or press <strong style="color: #38bdf8;">Physical Switch 3</strong> on terminal.
+          </div>
+        </div>
         <video id="client-webcam-feed" autoplay playsinline muted style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 12px;"></video>
         <canvas id="face-hud-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; border-radius: 12px;"></canvas>
-        <img id="server-mjpeg-stream" src="/video_feed" class="video-stream" alt="Live Camera Feed">
+        <img id="server-mjpeg-stream" src="/video_feed" class="video-stream" alt="Live Camera Feed" style="display: none;" onerror="this.style.display='none';">
         <div class="video-overlay-elements">
-          <span class="badge pulse success" id="badge-cam-feed-status">CAMERA ACTIVE</span>
-          <span class="badge" id="face-scan-status">ALIGNING</span>
+          <span class="badge success" id="badge-cam-feed-status">PI CAMERA ACTIVE</span>
+          <span class="badge" id="face-scan-status">STANDBY</span>
         </div>
       </div>
 
@@ -183,13 +191,13 @@
 
         <div class="auto-detect-box" id="auto-detect-container" style="background: rgba(15, 23, 42, 0.7); border: 1px solid #334155; padding: 12px; border-radius: 10px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <span id="auto-detect-label" style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">Scanning for live face...</span>
-            <span id="auto-detect-percent" style="font-size: 0.85rem; font-weight: 700; color: #34d399;">0%</span>
+            <span id="auto-detect-label" style="font-size: 0.85rem; font-weight: 600; color: #34d399;">Raspberry Pi Camera Ready</span>
+            <span id="auto-detect-percent" style="font-size: 0.85rem; font-weight: 700; color: #34d399;">--</span>
           </div>
           <div class="progress-track" style="height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;">
             <div class="progress-fill" id="auto-detect-progress" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #34d399); transition: width 0.2s ease;"></div>
           </div>
-          <p id="auto-detect-instruction" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; margin-bottom: 0;">Face will automatically verify once centered and held still.</p>
+          <p id="auto-detect-instruction" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; margin-bottom: 0;">Look directly into Raspberry Pi camera lens and click button below (or press Pi Switch 3).</p>
         </div>
 
         <div class="metric-bar-group">
@@ -209,15 +217,15 @@
           </div>
           <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
             <span>Active Camera:</span>
-            <span style="color: #60a5fa;" id="active-camera-label">Laptop HD Webcam</span>
+            <span style="color: #34d399;" id="active-camera-label">Raspberry Pi Camera (picamera2)</span>
           </div>
         </div>
 
         <div style="display: flex; gap: 10px; width: 100%;">
-          <button class="btn-primary" id="btn-capture-face" style="flex: 1; justify-content: center;" onclick="triggerFaceVerify()">
+          <button class="btn-primary" id="btn-capture-face" style="display: none; flex: 1; justify-content: center;" onclick="triggerFaceVerify()">
             Capture & Authenticate Face →
           </button>
-          <button class="btn-primary" id="btn-capture-pi-camera" style="display: none; flex: 1; justify-content: center; background: linear-gradient(135deg, #059669, #10b981);" onclick="triggerPiCameraCaptureAndVerify()">
+          <button class="btn-primary" id="btn-capture-pi-camera" style="display: flex; flex: 1; justify-content: center; background: linear-gradient(135deg, #059669, #10b981);" onclick="triggerPiCameraCaptureAndVerify()">
             🍓 Capture from Pi & Verify →
           </button>
         </div>
@@ -369,17 +377,24 @@
           <div style="margin-bottom: 18px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <span style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">1. Facial Image Enrollment</span>
-              <span id="reg-face-badge" class="badge" style="font-size: 0.7rem;">NOT CAPTURED</span>
+              <span id="reg-face-badge" class="badge" style="font-size: 0.7rem;">PI CAM READY</span>
             </div>
 
             <div style="position: relative; width: 100%; height: 210px; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid #334155; display: flex; align-items: center; justify-content: center;">
-              <video id="reg-cam-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+              <div id="reg-cam-pi-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; color: #94a3b8; text-align: center; padding: 14px; background: radial-gradient(circle, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.98) 100%);">
+                <div style="font-size: 2.2rem; margin-bottom: 6px;">🍓</div>
+                <div style="font-size: 0.95rem; font-weight: 700; color: #34d399;">Raspberry Pi Camera (Default)</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px; max-width: 300px; line-height: 1.3;">Loading Pi camera preview...</div>
+              </div>
+              <img id="reg-cam-preview-img" style="display: none; width: 100%; height: 100%; object-fit: cover;" alt="Pi Camera Preview">
+              <video id="reg-cam-video" autoplay playsinline muted style="display: none; width: 100%; height: 100%; object-fit: cover;"></video>
               <canvas id="reg-cam-canvas" style="display: none; width: 100%; height: 100%; object-fit: cover;"></canvas>
             </div>
 
             <div style="display: flex; gap: 8px; margin-top: 10px;">
               <button type="button" class="btn-primary" id="btn-reg-capture-pi" style="flex: 1.2; padding: 10px; font-size: 0.85rem; background: linear-gradient(135deg, #10b981, #059669); border-radius: 8px; cursor: pointer;" onclick="captureRegistrationPiCamera()">🍓 Snap with Pi Cam</button>
-              <button type="button" class="btn-secondary" id="btn-reg-capture-face" style="flex: 1; padding: 10px; font-size: 0.85rem; background: #1e293b; border: 1px solid #475569; color: #f1f5f9; border-radius: 8px; cursor: pointer;" onclick="captureRegistrationFace()">💻 Laptop Cam</button>
+              <button type="button" class="btn-secondary" id="btn-reg-start-laptop" style="flex: 1; padding: 10px; font-size: 0.85rem; background: #1e293b; border: 1px solid #475569; color: #f1f5f9; border-radius: 8px; cursor: pointer;" onclick="startRegistrationLaptopCam()">💻 Laptop Cam</button>
+              <button type="button" class="btn-primary" id="btn-reg-capture-face" style="display: none; flex: 1; padding: 10px; font-size: 0.85rem; background: linear-gradient(135deg, #0284c7, #0369a1); border-radius: 8px; cursor: pointer;" onclick="captureRegistrationFace()">📸 Snap Laptop Photo</button>
               <button type="button" class="btn-secondary" id="btn-reg-retake-face" style="padding: 10px 14px; font-size: 0.85rem; display: none; background: #1e293b; border: 1px solid #475569; color: #f1f5f9; border-radius: 8px; cursor: pointer;" onclick="retakeRegistrationFace()">🔄 Retake</button>
               <label class="btn-secondary" style="padding: 10px 14px; font-size: 0.85rem; cursor: pointer; margin: 0; display: flex; align-items: center; background: #1e293b; border: 1px solid #475569; color: #38bdf8; border-radius: 8px;">
                 📁 Upload
