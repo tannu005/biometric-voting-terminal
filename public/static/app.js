@@ -1969,6 +1969,15 @@ async function submitVoterRegistration() {
     if (resp.ok && data.success) {
       audio.ballotChime();
       newlyRegisteredVoter = data.voter;
+      FALLBACK_VOTERS[data.voter.epic] = {
+        epic: data.voter.epic,
+        name: data.voter.name,
+        constituency: data.voter.constituency,
+        gender: data.voter.gender,
+        dob: data.voter.dob,
+        fingerprint_slot: data.voter.fingerprint_slot,
+        photo_url: regCapturedPhotoBase64 || `/voter_db/${data.voter.photo || data.voter.epic + '.jpg'}`
+      };
 
       document.getElementById('modal-success-epic').innerText = data.voter.epic;
       document.getElementById('modal-success-name').innerText = data.voter.name;
@@ -2014,7 +2023,7 @@ function proceedToVoteWithNewVoter() {
     const epicField = document.getElementById('epic-input-field');
     if (epicField) {
       epicField.value = epic;
-      lookupVoterByEpic(epic);
+      submitEpicLookup();
     }
   }
 }
