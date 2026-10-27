@@ -36,6 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def vercel_path_rewrite_middleware(request: Request, call_next):
+    if "path" in request.query_params:
+        target = request.query_params["path"].strip("/")
+        if target:
+            request.scope["path"] = f"/api/{target}"
+    return await call_next(request)
+
+
 class SafeCryptoEngine:
 
     def __init__(self, salt: str = "LOCAL_TEST_SALT_2026"):
