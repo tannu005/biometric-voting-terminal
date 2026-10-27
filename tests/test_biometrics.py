@@ -202,6 +202,69 @@ class TestEndToEndKioskAPI(unittest.TestCase):
         data = r_pi.json()
         self.assertIn("success", data)
 
+    def test_voter_registration_workflow(self):
+        # 1. Check next available slot
+        r_slot = self.client.get("/api/voter/next-slot")
+        self.assertEqual(r_slot.status_code, 200)
+        slot_data = r_slot.json()
+        self.assertIn("next_slot", slot_data)
+        next_slot = slot_data["next_slot"]
+        self.assertGreater(next_slot, 0)
+
+        # 2. Register new voter
+        test_epic = f"VOTE-IND-TEST-{uuid.uuid4().hex[:6].upper()}"
+        dummy_b64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
+        r_reg = self.client.post("/api/voter/register", json={
+            "epic": test_epic,
+            "name": "Integration Test Voter",
+            "gender": "Female",
+            "dob": "1997-04-10",
+            "constituency": "Central Tech Constituency - AC-07",
+            "fingerprint_slot": next_slot,
+            "photo_base64": dummy_b64
+        })
+        self.assertEqual(r_reg.status_code, 200)
+        reg_data = r_reg.json()
+        self.assertTrue(reg_data["success"])
+        self.assertEqual(reg_data["voter"]["epic"], test_epic)
+        self.assertEqual(reg_data["voter"]["fingerprint_slot"], next_slot)
+
+        # 3. Lookup newly registered voter
+        r_lookup = self.client.post("/api/voter/lookup", json={"epic": test_epic})
+        self.assertEqual(r_lookup.status_code, 200)
+        voter_info = r_lookup.json()["voter"]
+        self.assertEqual(voter_info["name"], "Integration Test Voter")
+
+        # 4. Duplicate registration should be rejected
+        r_dup = self.client.post("/api/voter/register", json={
+            "epic": test_epic,
+            "name": "Duplicate Voter",
+            "gender": "Male"
+        })
+        self.assertEqual(r_dup.status_code, 409)
+
+        # Cleanup created test photos and voter record
+        for base_p in [os.path.join(ROOT_DIR, "data", "voter_db"), os.path.join(ROOT_DIR, "public", "voter_db")]:
+            p = os.path.join(base_p, f"{test_epic}.jpg")
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+        voters_file = os.path.join(ROOT_DIR, "data", "voters.json")
+        if os.path.exists(voters_file):
+            try:
+                import json
+                with open(voters_file, "r", encoding="utf-8") as f:
+                    v_list = json.load(f)
+                v_filtered = [v for v in v_list if v.get("epic") != test_epic]
+                with open(voters_file, "w", encoding="utf-8") as f:
+                    json.dump(v_filtered, f, indent=2)
+            except Exception:
+                pass
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

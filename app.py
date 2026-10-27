@@ -470,6 +470,19 @@ def query_pi_hardware(method: str, path: str, timeout: Optional[float] = None, *
 class VoterLookupRequest(BaseModel):
     epic: str
 
+class VoterRegistrationRequest(BaseModel):
+    epic: str
+    name: str
+    constituency: Optional[str] = "Central Tech Constituency - AC-07"
+    gender: Optional[str] = "Not Specified"
+    dob: Optional[str] = "2000-01-01"
+    fingerprint_slot: Optional[int] = None
+    photo_base64: Optional[str] = None
+    is_eligible: Optional[bool] = True
+
+class FingerprintEnrollRequest(BaseModel):
+    slot: int
+
 class FaceVerifyRequest(BaseModel):
     epic: str
     image_data: Optional[str] = None
@@ -493,6 +506,37 @@ class CastVoteRequest(BaseModel):
     candidate_id: str
     epic: str
 
+def save_voter_photo(epic: str, photo_b64: str) -> str:
+    filename = f"{epic}.jpg"
+    raw_b64 = photo_b64
+    if "," in raw_b64:
+        raw_b64 = raw_b64.split(",", 1)[1]
+    img_data = base64.b64decode(raw_b64)
+    target1 = os.path.join(VOTER_DB_DIR, filename)
+    with open(target1, "wb") as f:
+        f.write(img_data)
+
+    pub_voter_db = os.path.join(ROOT_DIR, "public", "voter_db")
+    if os.path.exists(pub_voter_db):
+        try:
+            with open(os.path.join(pub_voter_db, filename), "wb") as f:
+                f.write(img_data)
+        except Exception:
+            pass
+    return filename
+
+def get_next_available_slot() -> int:
+    voters = load_voters()
+    used_slots = set()
+    for v in voters.values():
+        slot = v.get("fingerprint_slot")
+        if isinstance(slot, int) and slot > 0:
+            used_slots.add(slot)
+    cand = 1
+    while cand in used_slots:
+        cand += 1
+    return cand
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_kiosk_ui():
     html_path = os.path.join(ROOT_DIR, "frontend", "index.html")
@@ -509,6 +553,96 @@ async def video_feed():
         face_pipeline.generate_mjpeg_stream(),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+@app.get("/api/voter/next-slot")
+async def get_next_slot():
+    next_slot = get_next_available_slot()
+    voters = load_voters()
+    used_slots = sorted([v.get("fingerprint_slot") for v in voters.values() if isinstance(v.get("fingerprint_slot"), int)])
+    return {"next_slot": next_slot, "used_slots": used_slots}
+
+@app.post("/api/voter/register")
+async def register_voter(req: VoterRegistrationRequest):
+    epic = req.epic.strip().upper()
+    name = req.name.strip()
+    if not epic:
+        raise HTTPException(status_code=400, detail={"error": "INVALID_EPIC", "message": "EPIC identifier is required."})
+    if not name:
+        raise HTTPException(status_code=400, detail={"error": "INVALID_NAME", "message": "Voter name is required."})
+
+    voters = load_voters()
+    if epic in voters:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "EPIC_ALREADY_EXISTS", "message": f"Voter with EPIC '{epic}' is already registered."}
+        )
+
+    slot = req.fingerprint_slot
+    if not slot or slot <= 0:
+        slot = get_next_available_slot()
+
+    photo_filename = f"{epic}.jpg"
+    if req.photo_base64:
+        try:
+            save_voter_photo(epic, req.photo_base64)
+        except Exception as e:
+            logger.warning(f"Failed to save voter photo for {epic}: {e}")
+    else:
+        # If no photo provided, copy fallback 001 photo if exists
+        fallback_src = os.path.join(VOTER_DB_DIR, "VOTE-IND-2026-001.jpg")
+        target_dst = os.path.join(VOTER_DB_DIR, photo_filename)
+        if os.path.exists(fallback_src) and not os.path.exists(target_dst):
+            try:
+                import shutil
+                shutil.copyfile(fallback_src, target_dst)
+            except Exception:
+                pass
+
+    new_voter = {
+        "epic": epic,
+        "name": name,
+        "constituency": req.constituency or "Central Tech Constituency - AC-07",
+        "gender": req.gender or "Not Specified",
+        "dob": req.dob or "2000-01-01",
+        "fingerprint_slot": slot,
+        "is_eligible": req.is_eligible if req.is_eligible is not None else True,
+        "photo": photo_filename
+    }
+
+    # Save to voters.json
+    try:
+        os.makedirs(os.path.dirname(VOTERS_FILE), exist_ok=True)
+        v_list = list(voters.values())
+        v_list.append(new_voter)
+        with open(VOTERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(v_list, f, indent=2)
+    except Exception as exc:
+        logger.warning(f"Could not persist to voters.json: {exc}")
+
+    # Also keep in-memory DEFAULT_VOTERS updated if used as fallback
+    if new_voter not in DEFAULT_VOTERS:
+        DEFAULT_VOTERS.append(new_voter)
+
+    # Notify Pi LCD if available
+    query_pi_hardware("POST", "/display", json={"message": f"Registered:\n{name[:16]}"})
+
+    return {
+        "success": True,
+        "voter": new_voter,
+        "message": f"Voter '{name}' registered successfully with Fingerprint Slot #{slot}."
+    }
+
+@app.post("/api/hardware/fingerprint-enroll")
+async def enroll_hardware_fingerprint(req: FingerprintEnrollRequest):
+    pi_resp = query_pi_hardware("POST", "/fingerprint/enroll", timeout=25.0, json={"slot": req.slot})
+    if pi_resp:
+        return pi_resp
+    return {
+        "enrolled": True,
+        "slot": req.slot,
+        "mode": "LOCAL_MOCK_RESERVED",
+        "message": f"Fingerprint slot #{req.slot} reserved. Connect Pi over Ethernet to burn template to hardware."
+    }
 
 @app.post("/api/voter/lookup")
 async def voter_lookup(req: VoterLookupRequest):

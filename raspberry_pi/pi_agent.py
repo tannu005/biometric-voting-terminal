@@ -130,6 +130,10 @@ def authorize(x_device_token: str = Header(default='')):
 class DisplayRequest(BaseModel):
     message: str
 
+class FingerprintEnrollRequest(BaseModel):
+    slot: int
+
+
 @agent_app.get('/health')
 def health(_auth: bool = Depends(authorize)):
     return {
@@ -196,6 +200,76 @@ def fingerprint_match(_auth: bool = Depends(authorize)):
             return {'matched': False, 'reason': 'no_template_match'}
 
         raise HTTPException(status_code=500, detail=f'Fingerprint search error: {result}')
+
+@agent_app.post('/fingerprint/enroll')
+def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(authorize)):
+    slot = req.slot
+    if finger is None:
+        return {
+            'enrolled': True,
+            'slot': slot,
+            'mode': 'SIMULATED',
+            'message': f'Sensor offline. Reserved Slot #{slot}.'
+        }
+
+    with hardware_lock:
+        import adafruit_fingerprint
+        show_message(f'Enroll Slot #{slot}' + chr(10) + 'Place Finger...')
+
+        # Step 1: First finger placement
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            res = finger.get_image()
+            if res == adafruit_fingerprint.OK:
+                break
+            time.sleep(0.15)
+        else:
+            show_message('Enroll Timeout' + chr(10) + 'Try Again')
+            return {'enrolled': False, 'reason': 'timeout_finger_1'}
+
+        res = finger.image_2_tz(1)
+        if res != adafruit_fingerprint.OK:
+            show_message('Feature Error' + chr(10) + 'Try Again')
+            return {'enrolled': False, 'reason': 'feature_extraction_failed_1'}
+
+        show_message('Remove Finger...' + chr(10) + 'Wait 2 secs')
+        time.sleep(2)
+
+        # Step 2: Second finger placement
+        show_message('Place Again' + chr(10) + 'Same Finger...')
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            res = finger.get_image()
+            if res == adafruit_fingerprint.OK:
+                break
+            time.sleep(0.15)
+        else:
+            show_message('Enroll Timeout' + chr(10) + 'Try Again')
+            return {'enrolled': False, 'reason': 'timeout_finger_2'}
+
+        res = finger.image_2_tz(2)
+        if res != adafruit_fingerprint.OK:
+            show_message('Feature Error' + chr(10) + 'Try Again')
+            return {'enrolled': False, 'reason': 'feature_extraction_failed_2'}
+
+        # Step 3: Create model and store in flash
+        res = finger.create_model()
+        if res != adafruit_fingerprint.OK:
+            show_message('Prints Differ' + chr(10) + 'Enroll Failed')
+            return {'enrolled': False, 'reason': 'prints_do_not_match'}
+
+        res = finger.store_model(slot)
+        if res != adafruit_fingerprint.OK:
+            show_message('Store Failed' + chr(10) + f'Code: {res}')
+            return {'enrolled': False, 'reason': f'store_failed_{res}'}
+
+        show_message('Enroll Success!' + chr(10) + f'Slot #{slot} Stored')
+        return {
+            'enrolled': True,
+            'slot': slot,
+            'mode': 'R307S_HARDWARE',
+            'message': f'Fingerprint enrolled and stored in Slot #{slot}'
+        }
 
 @agent_app.post('/camera/capture')
 def capture_camera(_auth: bool = Depends(authorize)):

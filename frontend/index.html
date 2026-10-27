@@ -20,6 +20,11 @@
       </div>
     </div>
 
+    <div class="terminal-mode-switch">
+      <button id="btn-mode-kiosk" class="mode-toggle-btn active" onclick="switchTerminalMode('kiosk')">🗳️ Voting Terminal</button>
+      <button id="btn-mode-register" class="mode-toggle-btn" onclick="switchTerminalMode('register')">📝 Register Voter</button>
+    </div>
+
     <div class="system-status-badges">
       <div class="badge pulse success" id="badge-airgap">ETHERNET: DIRECT</div>
       <div class="badge" id="badge-pi-status">PI: CHECKING...</div>
@@ -296,7 +301,146 @@
       </div>
     </section>
 
+    <!-- VOTER REGISTRATION SCREEN -->
+    <section class="screen-card" id="screen-register" style="display: none;">
+      <div class="screen-title-area">
+        <h2 class="screen-title">Voter Registration & Biometric Enrollment</h2>
+        <p class="screen-desc">Capture demographic profile, facial template, and assign R307S fingerprint slot</p>
+      </div>
+
+      <div class="reg-container">
+        <!-- Column 1: Demographic Form -->
+        <div class="reg-card">
+          <h3>📋 Demographic Profile</h3>
+          
+          <div class="form-group">
+            <label for="reg-epic">EPIC Card Number (Voter ID)</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="reg-epic" class="form-input" placeholder="VOTE-IND-2026-005" style="text-transform: uppercase; font-weight: 700;">
+              <button type="button" class="btn-secondary" style="padding: 8px 12px; font-size: 0.8rem; white-space: nowrap; background: #1e293b; border: 1px solid #475569; color: #38bdf8; border-radius: 8px; cursor: pointer;" onclick="autoGenerateEpic()">🎲 Auto ID</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="reg-name">Full Legal Name</label>
+            <input type="text" id="reg-name" class="form-input" placeholder="e.g. Aarti Verma">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label for="reg-gender">Gender</label>
+              <select id="reg-gender" class="form-input" style="cursor: pointer;">
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="reg-dob">Date of Birth</label>
+              <input type="date" id="reg-dob" class="form-input" value="1996-05-12">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="reg-constituency">Constituency</label>
+            <input type="text" id="reg-constituency" class="form-input" value="Central Tech Constituency - AC-07">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>Assigned Fingerprint Slot</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(30, 41, 59, 0.4); padding: 10px 14px; border-radius: 8px; border: 1px solid #334155;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.15rem; font-weight: 800; color: #38bdf8;" id="reg-slot-display">Slot #5</span>
+                <input type="number" id="reg-slot-input" style="display: none; width: 60px; padding: 4px; background: #0f172a; color: #fff; border: 1px solid #38bdf8; border-radius: 4px;" min="1" max="1000" value="5">
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" id="btn-edit-slot" style="background: transparent; border: none; color: #94a3b8; font-size: 0.75rem; cursor: pointer; text-decoration: underline;" onclick="toggleEditSlot()">Edit Slot</button>
+                <span class="badge success" id="reg-slot-status" style="font-size: 0.7rem;">AUTO-ASSIGNED</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 2: Biometric Enrollment -->
+        <div class="reg-card">
+          <h3>📷 Biometric Capture</h3>
+
+          <!-- Face Enrollment Box -->
+          <div style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">1. Facial Image Enrollment</span>
+              <span id="reg-face-badge" class="badge" style="font-size: 0.7rem;">NOT CAPTURED</span>
+            </div>
+
+            <div style="position: relative; width: 100%; height: 210px; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid #334155; display: flex; align-items: center; justify-content: center;">
+              <video id="reg-cam-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+              <canvas id="reg-cam-canvas" style="display: none; width: 100%; height: 100%; object-fit: cover;"></canvas>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <button type="button" class="btn-primary" id="btn-reg-capture-face" style="flex: 1; padding: 10px; font-size: 0.85rem;" onclick="captureRegistrationFace()">📸 Snap Photo</button>
+              <button type="button" class="btn-secondary" id="btn-reg-retake-face" style="padding: 10px 14px; font-size: 0.85rem; display: none; background: #1e293b; border: 1px solid #475569; color: #f1f5f9; border-radius: 8px; cursor: pointer;" onclick="retakeRegistrationFace()">🔄 Retake</button>
+              <label class="btn-secondary" style="padding: 10px 14px; font-size: 0.85rem; cursor: pointer; margin: 0; display: flex; align-items: center; background: #1e293b; border: 1px solid #475569; color: #38bdf8; border-radius: 8px;">
+                📁 Upload
+                <input type="file" id="reg-photo-upload" accept="image/*" style="display: none;" onchange="handleRegistrationPhotoUpload(event)">
+              </label>
+            </div>
+          </div>
+
+          <!-- Fingerprint Enrollment Box -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">2. R307S Fingerprint Template</span>
+              <span id="reg-fp-badge" class="badge" style="font-size: 0.7rem;">READY TO ENROLL</span>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+              <div style="font-size: 0.82rem; color: #94a3b8; margin-bottom: 8px;" id="reg-fp-status-text">
+                Click below to burn the biometric minutiae template into R307S flash slot.
+              </div>
+              <button type="button" class="btn-primary" id="btn-reg-enroll-fp" style="width: 100%; padding: 10px; font-size: 0.85rem; background: linear-gradient(135deg, #0284c7, #0369a1); border-radius: 8px;" onclick="enrollRegistrationFingerprint()">
+                👆 Enroll on R307S Sensor
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Registration Submit Bar -->
+      <div style="margin-top: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+        <div id="reg-form-error" style="color: var(--accent-rose); font-size: 0.88rem; font-weight: 600; min-height: 20px;"></div>
+        <button class="btn-primary" id="btn-submit-registration" style="padding: 14px 36px; font-size: 1.05rem; background: linear-gradient(135deg, #10b981, #059669); border-radius: 12px; cursor: pointer;" onclick="submitVoterRegistration()">
+          ✅ Complete Registration & Save Voter
+        </button>
+      </div>
+    </section>
+
   </main>
+
+  <!-- Registration Success Modal -->
+  <div class="modal-backdrop" id="reg-success-modal" style="display: none;">
+    <div class="modal-card" style="max-width: 480px; text-align: center;">
+      <div style="font-size: 54px; margin-bottom: 10px;">🎉</div>
+      <h3 style="font-size: 1.35rem; color: #fff; margin-bottom: 6px;">Voter Registered Successfully!</h3>
+      <p style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 18px;">Biometric profile and voter ID roll have been securely committed.</p>
+      
+      <div style="background: rgba(30, 41, 59, 0.6); padding: 16px; border-radius: 12px; margin-bottom: 22px; text-align: left; font-size: 0.88rem; border: 1px solid #334155;">
+        <div style="margin-bottom: 6px;"><strong style="color: #94a3b8;">EPIC ID:</strong> <span id="modal-success-epic" style="color: #38bdf8; font-weight: 700;">--</span></div>
+        <div style="margin-bottom: 6px;"><strong style="color: #94a3b8;">Full Name:</strong> <span id="modal-success-name" style="color: #fff; font-weight: 600;">--</span></div>
+        <div style="margin-bottom: 6px;"><strong style="color: #94a3b8;">Fingerprint Slot:</strong> <span id="modal-success-slot" style="color: #34d399; font-weight: 700;">--</span></div>
+        <div><strong style="color: #94a3b8;">Constituency:</strong> <span id="modal-success-constituency" style="color: #cbd5e1;">--</span></div>
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button style="background: #334155; border: none; color: #fff; padding: 12px 20px; border-radius: 10px; font-weight: 600; cursor: pointer;" onclick="closeRegistrationModal()">
+          Register Another
+        </button>
+        <button class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #0369a1); border-radius: 10px; padding: 12px 22px;" onclick="proceedToVoteWithNewVoter()">
+          Proceed to Vote →
+        </button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-backdrop" id="vote-modal">
     <div class="modal-card">

@@ -1250,3 +1250,361 @@ window.addEventListener('DOMContentLoaded', () => {
   initSensorTouchListeners();
   startHardwareEventPolling();
 });
+
+/* ==========================================================
+   VOTER REGISTRATION SUB-SYSTEM
+   ========================================================== */
+let currentTerminalMode = 'kiosk';
+let regCamStream = null;
+let regCapturedPhotoBase64 = null;
+let regCurrentSlot = 5;
+let newlyRegisteredVoter = null;
+
+function switchTerminalMode(mode) {
+  currentTerminalMode = mode;
+  const btnKiosk = document.getElementById('btn-mode-kiosk');
+  const btnReg = document.getElementById('btn-mode-register');
+  const stepper = document.querySelector('.stepper-container');
+  const regScreen = document.getElementById('screen-register');
+
+  if (mode === 'register') {
+    if (btnKiosk) btnKiosk.classList.remove('active');
+    if (btnReg) btnReg.classList.add('active');
+    if (stepper) stepper.style.display = 'none';
+
+    Object.values(screens).forEach(sc => {
+      if (sc) {
+        sc.style.display = 'none';
+        sc.classList.remove('active');
+      }
+    });
+    if (regScreen) {
+      regScreen.style.display = 'block';
+      regScreen.classList.add('active');
+    }
+
+    stopAutomaticFaceTracker();
+    initRegistrationCam();
+    fetchNextAvailableSlot();
+    updatePiDisplay("Registration Mode\nEnroll Voter");
+  } else {
+    if (btnKiosk) btnKiosk.classList.add('active');
+    if (btnReg) btnReg.classList.remove('active');
+    if (stepper) stepper.style.display = 'flex';
+
+    if (regScreen) {
+      regScreen.style.display = 'none';
+      regScreen.classList.remove('active');
+    }
+    stopRegistrationCam();
+    setScreenState(KioskState.currentStep || 1);
+  }
+}
+
+async function fetchNextAvailableSlot() {
+  try {
+    const resp = await fetch('/api/voter/next-slot');
+    if (resp.ok) {
+      const data = await resp.json();
+      regCurrentSlot = data.next_slot || 5;
+      const slotDisplay = document.getElementById('reg-slot-display');
+      const slotInput = document.getElementById('reg-slot-input');
+      if (slotDisplay) slotDisplay.innerText = `Slot #${regCurrentSlot}`;
+      if (slotInput) slotInput.value = regCurrentSlot;
+    }
+  } catch (e) {
+    console.warn("Could not fetch next slot:", e);
+  }
+}
+
+function autoGenerateEpic() {
+  audio.beep(850, 0.05);
+  const randNum = Math.floor(100 + Math.random() * 900);
+  const epicField = document.getElementById('reg-epic');
+  if (epicField) {
+    epicField.value = `VOTE-IND-2026-${randNum}`;
+  }
+}
+
+function toggleEditSlot() {
+  const display = document.getElementById('reg-slot-display');
+  const input = document.getElementById('reg-slot-input');
+  const btn = document.getElementById('btn-edit-slot');
+  if (!input || !display) return;
+  if (input.style.display === 'none') {
+    input.style.display = 'inline-block';
+    display.style.display = 'none';
+    if (btn) btn.innerText = 'Save Slot';
+    input.focus();
+  } else {
+    regCurrentSlot = parseInt(input.value) || regCurrentSlot;
+    display.innerText = `Slot #${regCurrentSlot}`;
+    input.style.display = 'none';
+    display.style.display = 'inline-block';
+    if (btn) btn.innerText = 'Edit Slot';
+  }
+}
+
+async function initRegistrationCam() {
+  const video = document.getElementById('reg-cam-video');
+  const canvas = document.getElementById('reg-cam-canvas');
+  if (canvas) canvas.style.display = 'none';
+  if (video) video.style.display = 'block';
+
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      if (!regCamStream) {
+        regCamStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+        });
+      }
+      if (video && regCamStream) {
+        video.srcObject = regCamStream;
+        await video.play().catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Registration webcam unavailable:", err);
+    }
+  }
+}
+
+function stopRegistrationCam() {
+  if (regCamStream) {
+    try {
+      regCamStream.getTracks().forEach(t => t.stop());
+    } catch (e) {}
+    regCamStream = null;
+  }
+}
+
+function captureRegistrationFace() {
+  audio.beep(900, 0.08);
+  const video = document.getElementById('reg-cam-video');
+  const canvas = document.getElementById('reg-cam-canvas');
+  const badge = document.getElementById('reg-face-badge');
+  const btnCapture = document.getElementById('btn-reg-capture-face');
+  const btnRetake = document.getElementById('btn-reg-retake-face');
+
+  if (!video || !canvas) return;
+
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  regCapturedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.9);
+
+  video.style.display = 'none';
+  canvas.style.display = 'block';
+
+  if (badge) {
+    badge.className = 'badge success';
+    badge.innerText = 'PHOTO CAPTURED';
+  }
+  if (btnCapture) btnCapture.style.display = 'none';
+  if (btnRetake) btnRetake.style.display = 'inline-block';
+}
+
+function retakeRegistrationFace() {
+  const video = document.getElementById('reg-cam-video');
+  const canvas = document.getElementById('reg-cam-canvas');
+  const badge = document.getElementById('reg-face-badge');
+  const btnCapture = document.getElementById('btn-reg-capture-face');
+  const btnRetake = document.getElementById('btn-reg-retake-face');
+
+  regCapturedPhotoBase64 = null;
+  if (canvas) canvas.style.display = 'none';
+  if (video) video.style.display = 'block';
+
+  if (badge) {
+    badge.className = 'badge';
+    badge.innerText = 'NOT CAPTURED';
+  }
+  if (btnCapture) btnCapture.style.display = 'inline-block';
+  if (btnRetake) btnRetake.style.display = 'none';
+}
+
+function handleRegistrationPhotoUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    regCapturedPhotoBase64 = e.target.result;
+    const canvas = document.getElementById('reg-cam-canvas');
+    const video = document.getElementById('reg-cam-video');
+    const badge = document.getElementById('reg-face-badge');
+    const btnCapture = document.getElementById('btn-reg-capture-face');
+    const btnRetake = document.getElementById('btn-reg-retake-face');
+
+    const img = new Image();
+    img.onload = () => {
+      if (canvas) {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        if (video) video.style.display = 'none';
+        canvas.style.display = 'block';
+      }
+      if (badge) {
+        badge.className = 'badge success';
+        badge.innerText = 'PHOTO UPLOADED';
+      }
+      if (btnCapture) btnCapture.style.display = 'none';
+      if (btnRetake) btnRetake.style.display = 'inline-block';
+    };
+    img.src = regCapturedPhotoBase64;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function enrollRegistrationFingerprint() {
+  audio.beep(750, 0.08);
+  const btn = document.getElementById('btn-reg-enroll-fp');
+  const statusText = document.getElementById('reg-fp-status-text');
+  const badge = document.getElementById('reg-fp-badge');
+
+  if (btn) btn.disabled = true;
+  if (statusText) statusText.innerText = `Enrolling finger into Slot #${regCurrentSlot}... Place finger on sensor when prompted.`;
+  if (badge) {
+    badge.className = 'badge pulse';
+    badge.innerText = 'ENROLLING...';
+  }
+
+  try {
+    const resp = await fetch('/api/hardware/fingerprint-enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot: regCurrentSlot })
+    });
+    const data = await resp.json();
+
+    if (data.enrolled) {
+      audio.successChord();
+      if (badge) {
+        badge.className = 'badge success';
+        badge.innerText = `ENROLLED (SLOT #${regCurrentSlot})`;
+      }
+      if (statusText) {
+        statusText.innerHTML = `<span style="color: #34d399; font-weight: 700;">✓ ${data.message}</span>`;
+      }
+    } else {
+      audio.errorTone();
+      if (badge) {
+        badge.className = 'badge';
+        badge.style.color = '#f43f5e';
+        badge.innerText = 'ENROLL FAILED';
+      }
+      if (statusText) {
+        statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;">Enrollment failed: ${data.reason || 'Sensor timeout'}</span>`;
+      }
+    }
+  } catch (err) {
+    audio.errorTone();
+    if (statusText) statusText.innerText = "Error communicating with hardware agent. Template slot will still be reserved.";
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function submitVoterRegistration() {
+  audio.beep(800, 0.08);
+  const epicInput = document.getElementById('reg-epic');
+  const nameInput = document.getElementById('reg-name');
+  const genderInput = document.getElementById('reg-gender');
+  const dobInput = document.getElementById('reg-dob');
+  const constInput = document.getElementById('reg-constituency');
+  const errorDiv = document.getElementById('reg-form-error');
+  const submitBtn = document.getElementById('btn-submit-registration');
+
+  if (errorDiv) errorDiv.innerText = '';
+
+  const epic = (epicInput ? epicInput.value : '').trim().toUpperCase();
+  const name = (nameInput ? nameInput.value : '').trim();
+
+  if (!epic) {
+    if (errorDiv) errorDiv.innerText = '⚠️ Please enter or generate an EPIC Card Number.';
+    return;
+  }
+  if (!name) {
+    if (errorDiv) errorDiv.innerText = '⚠️ Please enter the voter’s legal full name.';
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Saving Voter Profile...';
+  }
+
+  const payload = {
+    epic: epic,
+    name: name,
+    gender: genderInput ? genderInput.value : 'Male',
+    dob: dobInput ? dobInput.value : '1996-05-12',
+    constituency: constInput ? constInput.value : 'Central Tech Constituency - AC-07',
+    fingerprint_slot: regCurrentSlot,
+    photo_base64: regCapturedPhotoBase64
+  };
+
+  try {
+    const resp = await fetch('/api/voter/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+
+    if (resp.ok && data.success) {
+      audio.ballotChime();
+      newlyRegisteredVoter = data.voter;
+
+      document.getElementById('modal-success-epic').innerText = data.voter.epic;
+      document.getElementById('modal-success-name').innerText = data.voter.name;
+      document.getElementById('modal-success-slot').innerText = `Slot #${data.voter.fingerprint_slot}`;
+      document.getElementById('modal-success-constituency').innerText = data.voter.constituency;
+
+      const modal = document.getElementById('reg-success-modal');
+      if (modal) modal.style.display = 'flex';
+    } else {
+      audio.errorTone();
+      const msg = (data && data.detail && data.detail.message) || data.message || 'Registration failed.';
+      if (errorDiv) errorDiv.innerText = `⚠️ ${msg}`;
+    }
+  } catch (err) {
+    audio.errorTone();
+    if (errorDiv) errorDiv.innerText = `⚠️ Network error: ${err.message || 'Could not reach server'}`;
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = '✅ Complete Registration & Save Voter';
+    }
+  }
+}
+
+function closeRegistrationModal() {
+  const modal = document.getElementById('reg-success-modal');
+  if (modal) modal.style.display = 'none';
+
+  const epicInput = document.getElementById('reg-epic');
+  const nameInput = document.getElementById('reg-name');
+  if (epicInput) epicInput.value = '';
+  if (nameInput) nameInput.value = '';
+  retakeRegistrationFace();
+  fetchNextAvailableSlot();
+}
+
+function proceedToVoteWithNewVoter() {
+  const epic = newlyRegisteredVoter ? newlyRegisteredVoter.epic : '';
+  closeRegistrationModal();
+  switchTerminalMode('kiosk');
+
+  if (epic) {
+    const epicField = document.getElementById('epic-input-field');
+    if (epicField) {
+      epicField.value = epic;
+      lookupVoterByEpic(epic);
+    }
+  }
+}
