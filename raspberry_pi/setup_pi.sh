@@ -14,10 +14,13 @@ apt-get install -y \
     python3-dev \
     python3-venv \
     python3-opencv \
-    libatlas-base-dev \
-    libgl1-mesa-glx \
-    libhdf5-dev \
-    udev
+    udev || true
+
+# Install modern BLAS / OpenGL packages compatible with Debian Bookworm and Trixie
+apt-get install -y libopenblas-dev || apt-get install -y libatlas-base-dev || true
+apt-get install -y libgl1 || apt-get install -y libgl1-mesa-glx || true
+apt-get install -y libhdf5-dev || true
+
 
 usermod -a -G dialout "$TARGET_USER"
 usermod -a -G video "$TARGET_USER"
