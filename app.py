@@ -696,14 +696,8 @@ async def voter_lookup(req: VoterLookupRequest):
 @app.get("/api")
 @app.get("/api/")
 @app.get("/api/index")
-async def api_gateway_status(request: Request):
-    return {
-        "status": "ONLINE",
-        "url": str(request.url),
-        "path": request.url.path,
-        "query_params": dict(request.query_params),
-        "headers": {k: v for k, v in request.headers.items() if "auth" not in k.lower()}
-    }
+async def api_gateway_status():
+    return {"status": "ONLINE", "message": "Biometric Voting Terminal API Gateway Operational"}
 
 @app.get("/api/hardware/health")
 @app.get("/hardware/health")
