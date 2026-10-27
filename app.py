@@ -425,21 +425,8 @@ class SafeFusionEngine:
 
     def process_facial_verification(self, voter_epic: str, snapshot_frame: Optional[Any] = None, raw_bytes: Optional[bytes] = None, force_mock: Optional[bool] = None) -> Dict[str, Any]:
         session = self.active_sessions.get(voter_epic) or self.start_session(voter_epic)
-        if force_mock:
-            face_eval = {
-                "status": "MATCH_SUCCESS",
-                "match_score": 96.5,
-                "verified": True,
-                "liveness": True,
-                "liveness_pass": True,
-                "mode": "EDGE_CLOUD_AI",
-                "message": "Facial geometry verified against EPIC registry."
-            }
-        elif raw_bytes:
+        if raw_bytes:
             ref_bytes = get_voter_photo_bytes(voter_epic)
-            if not ref_bytes:
-                ref_bytes = get_voter_photo_bytes("VOTE-IND-2026-001")
-
             if ref_bytes:
                 face_eval = compare_face_biometrics(ref_bytes, raw_bytes)
             else:
@@ -449,11 +436,11 @@ class SafeFusionEngine:
                     "verified": False,
                     "liveness": False,
                     "liveness_pass": False,
-                    "mode": "FAIL_SAFE",
+                    "mode": "REAL_BIOMETRIC_STRICT",
                     "message": f"No registered reference photo found for voter {voter_epic}."
                 }
         elif 'face_pipeline' in globals() and hasattr(face_pipeline, 'verify_voter_face'):
-            face_eval = face_pipeline.verify_voter_face(voter_epic, snapshot_frame=snapshot_frame, raw_bytes=raw_bytes, force_mock=force_mock)
+            face_eval = face_pipeline.verify_voter_face(voter_epic, snapshot_frame=snapshot_frame, raw_bytes=raw_bytes)
         else:
             face_eval = {
                 "status": "MATCH_FAIL",
@@ -461,8 +448,8 @@ class SafeFusionEngine:
                 "verified": False,
                 "liveness": False,
                 "liveness_pass": False,
-                "mode": "FAIL_SAFE",
-                "message": "No face verification pipeline available or no valid face frame provided."
+                "mode": "REAL_BIOMETRIC_STRICT",
+                "message": "No live face image provided for biometric verification."
             }
         session["face_result"] = face_eval
         self._evaluate_consensus(session)
@@ -471,11 +458,11 @@ class SafeFusionEngine:
     def process_fingerprint_verification(self, voter_epic: str, timeout_sec: float = 6.0, touch_detected: bool = False) -> Dict[str, Any]:
         session = self.active_sessions.get(voter_epic) or self.start_session(voter_epic)
         fp_eval = {
-            "status": "MATCH_SUCCESS",
-            "score": 95,
-            "verified": True,
-            "mode": "CLOUD_EMULATION",
-            "message": "Fingerprint matches enrolled biometric template"
+            "status": "MATCH_FAIL",
+            "score": 0,
+            "verified": False,
+            "mode": "HARDWARE_REQUIRED",
+            "message": "Physical biometric sensor required. Touch R307S sensor on Raspberry Pi or use laptop sensor."
         }
         session["fingerprint_result"] = fp_eval
         self._evaluate_consensus(session)
@@ -528,20 +515,20 @@ class SafeFusionEngine:
 
 class SafeAS608Driver:
     def __init__(self):
-        self.mock_mode = True
+        self.mock_mode = False
         self.port = None
-        self.is_connected = True
+        self.is_connected = False
 
     def handshake(self) -> bool:
-        return True
+        return False
 
     def verify_fingerprint(self, expected_voter_slot: int = 1, timeout_sec: float = 5.0, touch_detected: bool = False) -> Dict[str, Any]:
         return {
-            "status": "MATCH_SUCCESS",
-            "score": 95,
-            "page_id": expected_voter_slot,
-            "mode": "CLOUD_EMULATION",
-            "message": f"Verified template #{expected_voter_slot}"
+            "status": "MATCH_FAIL",
+            "score": 0,
+            "page_id": None,
+            "mode": "DISCONNECTED",
+            "message": "Local AS608 hardware sensor not connected. Please connect via Raspberry Pi."
         }
 
 class SafeFacePipeline:
@@ -592,19 +579,17 @@ class SafeFacePipeline:
         }
 
     def verify_voter_face(self, voter_epic: str, snapshot_frame: Optional[Any] = None, raw_bytes: Optional[bytes] = None, force_mock: Optional[bool] = None) -> Dict[str, Any]:
-        if force_mock:
-            return {
-                "status": "MATCH_SUCCESS",
-                "match_score": 96.5,
-                "verified": True,
-                "liveness": True,
-                "liveness_pass": True,
-                "mode": "EDGE_CLOUD_AI",
-                "message": "Facial geometry verified against EPIC registry."
-            }
         ref_bytes = get_voter_photo_bytes(voter_epic)
         if not ref_bytes:
-            ref_bytes = get_voter_photo_bytes("VOTE-IND-2026-001")
+            return {
+                "status": "MATCH_FAIL",
+                "match_score": 0.0,
+                "verified": False,
+                "liveness": False,
+                "liveness_pass": False,
+                "mode": "REAL_BIOMETRIC_STRICT",
+                "message": f"No registered reference photo found for voter {voter_epic}."
+            }
 
         if raw_bytes and ref_bytes:
             return compare_face_biometrics(ref_bytes, raw_bytes)
@@ -623,7 +608,7 @@ class SafeFacePipeline:
             "verified": False,
             "liveness": False,
             "liveness_pass": False,
-            "mode": "FAIL_SAFE",
+            "mode": "REAL_BIOMETRIC_STRICT",
             "message": "No live face snapshot provided or camera offline."
         }
 
@@ -697,6 +682,8 @@ class VoterRegistrationRequest(BaseModel):
     gender: Optional[str] = "Not Specified"
     dob: Optional[str] = "2000-01-01"
     fingerprint_slot: Optional[int] = None
+    fingerprint_method: Optional[str] = "RPI_R307S_SENSOR"
+    credential_id: Optional[str] = None
     photo_base64: Optional[str] = None
     is_eligible: Optional[bool] = True
 
@@ -706,7 +693,6 @@ class FingerprintEnrollRequest(BaseModel):
 class FaceVerifyRequest(BaseModel):
     epic: str
     image_data: Optional[str] = None
-    force_mock: Optional[bool] = False
 
 class FaceDetectRequest(BaseModel):
     image_data: str
@@ -864,22 +850,23 @@ async def register_voter(req: VoterRegistrationRequest):
             detail={"error": "EPIC_ALREADY_EXISTS", "message": f"Voter with EPIC '{epic}' is already registered."}
         )
 
+    if not req.photo_base64:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "PHOTO_REQUIRED", "message": "A real live voter photo is required. Please capture via Pi camera or upload a photo."}
+        )
+
     slot = req.fingerprint_slot
     if not slot or slot <= 0:
         slot = get_next_available_slot()
 
     photo_filename = f"{epic}.jpg"
-    if req.photo_base64:
-        try:
-            save_voter_photo(epic, req.photo_base64)
-        except Exception as e:
-            logger.warning(f"Failed to save voter photo for {epic}: {e}")
-    else:
-        fallback_bytes = get_voter_photo_bytes("VOTE-IND-2026-001")
-        if fallback_bytes:
-            REGISTERED_PHOTOS[photo_filename] = fallback_bytes
-            REGISTERED_PHOTOS[epic] = fallback_bytes
+    try:
+        save_voter_photo(epic, req.photo_base64)
+    except Exception as e:
+        logger.warning(f"Failed to save voter photo for {epic}: {e}")
 
+    fp_method = req.fingerprint_method or ("LAPTOP_HARDWARE_FINGERPRINT" if req.credential_id else "RPI_R307S_SENSOR")
     new_voter = {
         "epic": epic,
         "name": name,
@@ -887,6 +874,8 @@ async def register_voter(req: VoterRegistrationRequest):
         "gender": req.gender or "Not Specified",
         "dob": req.dob or "2000-01-01",
         "fingerprint_slot": slot,
+        "fingerprint_method": fp_method,
+        "credential_id": req.credential_id,
         "is_eligible": req.is_eligible if req.is_eligible is not None else True,
         "photo": photo_filename
     }
@@ -1011,7 +1000,7 @@ async def hardware_health():
         "pi_url": PI_URL,
         "pi": pi_data,
         "local_camera": face_pipeline.is_camera_available(),
-        "local_as608": as608_sensor.is_connected or as608_sensor.mock_mode
+        "local_as608": as608_sensor.is_connected
     }
 
 @app.post("/api/hardware/display")
@@ -1166,7 +1155,7 @@ async def verify_face(req: FaceVerifyRequest):
             raw_bytes = None
             snapshot_frame = None
 
-    if not raw_bytes and not snapshot_frame and not req.force_mock:
+    if not raw_bytes and not snapshot_frame:
         try:
             resp = requests.post(f"{PI_URL}/camera/capture", headers=PI_HEADERS, timeout=6.0)
             if resp.status_code == 200 and resp.content:
@@ -1180,8 +1169,7 @@ async def verify_face(req: FaceVerifyRequest):
     result = fusion_engine.process_facial_verification(
         epic,
         snapshot_frame=snapshot_frame,
-        raw_bytes=raw_bytes,
-        force_mock=req.force_mock
+        raw_bytes=raw_bytes
     )
 
     voters = load_voters()
@@ -1365,9 +1353,9 @@ async def system_status():
         },
         "hardware": {
             "as608_fingerprint_scanner": {
-                "active_mode": "MOCK/EMULATION" if as608_sensor.mock_mode else "PHYSICAL_UART",
+                "active_mode": "PHYSICAL_UART" if as608_sensor.is_connected else "NOT_CONNECTED",
                 "port": as608_sensor.port,
-                "is_connected": as608_sensor.is_connected or as608_sensor.mock_mode,
+                "is_connected": as608_sensor.is_connected,
                 "handshake": as608_sensor.handshake()
             },
             "optical_camera": {

@@ -406,17 +406,22 @@
           <!-- Fingerprint Enrollment Box -->
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">2. R307S Fingerprint Template</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">2. Fingerprint Biometric Enrollment</span>
               <span id="reg-fp-badge" class="badge" style="font-size: 0.7rem;">READY TO ENROLL</span>
             </div>
 
             <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
               <div style="font-size: 0.82rem; color: #94a3b8; margin-bottom: 8px;" id="reg-fp-status-text">
-                Click below to burn the biometric minutiae template into R307S flash slot.
+                Enroll voter's physical finger using the Pi R307S sensor or your laptop's fingerprint reader.
               </div>
-              <button type="button" class="btn-primary" id="btn-reg-enroll-fp" style="width: 100%; padding: 10px; font-size: 0.85rem; background: linear-gradient(135deg, #0284c7, #0369a1); border-radius: 8px;" onclick="enrollRegistrationFingerprint()">
-                👆 Enroll on R307S Sensor
-              </button>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn-primary" id="btn-reg-enroll-fp" style="flex: 1; min-width: 150px; padding: 10px; font-size: 0.85rem; background: linear-gradient(135deg, #059669, #10b981); border-radius: 8px;" onclick="enrollRegistrationFingerprint()">
+                  🍓 Enroll on Pi R307S Sensor
+                </button>
+                <button type="button" class="btn-primary" id="btn-reg-enroll-laptop-fp" style="flex: 1; min-width: 150px; padding: 10px; font-size: 0.85rem; background: linear-gradient(135deg, #0284c7, #0369a1); border-radius: 8px;" onclick="enrollRegistrationLaptopFingerprint()">
+                  💻 Enroll via Laptop Sensor
+                </button>
+              </div>
             </div>
           </div>
         </div>

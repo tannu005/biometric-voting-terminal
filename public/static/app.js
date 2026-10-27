@@ -1502,6 +1502,9 @@ let currentTerminalMode = 'kiosk';
 let regCamStream = null;
 let regCapturedPhotoBase64 = null;
 let regCurrentSlot = 5;
+let regFingerprintEnrolled = false;
+let regFingerprintMethod = 'RPI_R307S_SENSOR';
+let regFingerprintCredentialId = null;
 let newlyRegisteredVoter = null;
 
 function switchTerminalMode(mode) {
@@ -1912,6 +1915,7 @@ async function enrollRegistrationFingerprint() {
 
     if (data.enrolled && data.mode === 'R307S_HARDWARE') {
       audio.successChord();
+      regFingerprintEnrolled = true;
       if (badge) {
         badge.className = 'badge success';
         badge.innerText = `ENROLLED (SLOT #${regCurrentSlot})`;
@@ -1921,6 +1925,7 @@ async function enrollRegistrationFingerprint() {
       }
     } else {
       audio.errorTone();
+      regFingerprintEnrolled = false;
       if (badge) {
         badge.className = 'badge';
         badge.style.color = '#f43f5e';
@@ -1941,6 +1946,7 @@ async function enrollRegistrationFingerprint() {
     }
   } catch (err) {
     audio.errorTone();
+    regFingerprintEnrolled = false;
     if (badge) {
       badge.className = 'badge';
       badge.style.color = '#f43f5e';
@@ -1956,6 +1962,82 @@ async function enrollRegistrationFingerprint() {
     }
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+async function enrollRegistrationLaptopFingerprint() {
+  audio.beep(750, 0.08);
+  const statusText = document.getElementById('reg-fp-status-text');
+  const badge = document.getElementById('reg-fp-badge');
+  const epicInput = document.getElementById('reg-epic');
+  const nameInput = document.getElementById('reg-name');
+
+  const epic = (epicInput ? epicInput.value : '').trim().toUpperCase() || 'VOTER-NEW';
+  const name = (nameInput ? nameInput.value : '').trim() || 'New Voter';
+
+  if (statusText) statusText.innerHTML = `<span style="color: #38bdf8;">👉 TOUCH SENSOR: Touch your laptop's fingerprint reader / power button now...</span>`;
+  if (badge) {
+    badge.className = 'badge pulse';
+    badge.innerText = 'TOUCH SENSOR...';
+  }
+
+  try {
+    const challenge = new Uint8Array(32);
+    window.crypto.getRandomValues(challenge);
+    const userId = new TextEncoder().encode(epic);
+
+    const publicKeyCredentialCreationOptions = {
+      challenge: challenge,
+      rp: {
+        name: "Air-Gapped Biometric Election Terminal",
+        id: window.location.hostname
+      },
+      user: {
+        id: userId,
+        name: epic.toLowerCase(),
+        displayName: name
+      },
+      pubKeyCredParams: [
+        { alg: -7, type: "public-key" }, 
+        { alg: -257, type: "public-key" }
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: "platform",
+        userVerification: "required"
+      },
+      timeout: 60000,
+      attestation: "none"
+    };
+
+    const credential = await navigator.credentials.create({
+      publicKey: publicKeyCredentialCreationOptions
+    });
+
+    if (credential) {
+      audio.successChord();
+      regFingerprintEnrolled = true;
+      regFingerprintMethod = "LAPTOP_HARDWARE_FINGERPRINT";
+      regFingerprintCredentialId = credential.id;
+
+      if (badge) {
+        badge.className = 'badge success';
+        badge.innerText = 'ENROLLED (LAPTOP)';
+      }
+      if (statusText) {
+        statusText.innerHTML = `<span style="color: #34d399; font-weight: 700;">✓ Real physical fingerprint authenticated via Laptop Hardware Sensor (ID: ${credential.id.slice(0, 16)}...)</span>`;
+      }
+    }
+  } catch (err) {
+    audio.errorTone();
+    regFingerprintEnrolled = false;
+    if (badge) {
+      badge.className = 'badge';
+      badge.style.color = '#f43f5e';
+      badge.innerText = 'TOUCH CANCELLED';
+    }
+    if (statusText) {
+      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;">❌ Fingerprint touch cancelled or sensor unavailable: ${err.message || err}</span>`;
+    }
   }
 }
 
@@ -2048,6 +2130,14 @@ async function submitVoterRegistration() {
     if (errorDiv) errorDiv.innerText = '⚠️ Please enter the voter’s legal full name.';
     return;
   }
+  if (!regCapturedPhotoBase64) {
+    if (errorDiv) errorDiv.innerText = '⚠️ Real photo required: Please snap with Pi Camera or upload a voter photo.';
+    return;
+  }
+  if (!regFingerprintEnrolled) {
+    if (errorDiv) errorDiv.innerText = '⚠️ Real fingerprint required: Please enroll on Pi R307S sensor or Laptop sensor.';
+    return;
+  }
 
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -2061,6 +2151,8 @@ async function submitVoterRegistration() {
     dob: dobInput ? dobInput.value : '1996-05-12',
     constituency: constInput ? constInput.value : 'Central Tech Constituency - AC-07',
     fingerprint_slot: regCurrentSlot,
+    fingerprint_method: regFingerprintMethod,
+    credential_id: regFingerprintCredentialId,
     photo_base64: regCapturedPhotoBase64
   };
 
@@ -2083,12 +2175,14 @@ async function submitVoterRegistration() {
         gender: data.voter.gender,
         dob: data.voter.dob,
         fingerprint_slot: data.voter.fingerprint_slot,
+        fingerprint_method: data.voter.fingerprint_method,
+        credential_id: data.voter.credential_id,
         photo_url: regCapturedPhotoBase64 || `/voter_db/${data.voter.photo || data.voter.epic + '.jpg'}`
       };
 
       document.getElementById('modal-success-epic').innerText = data.voter.epic;
       document.getElementById('modal-success-name').innerText = data.voter.name;
-      document.getElementById('modal-success-slot').innerText = `Slot #${data.voter.fingerprint_slot}`;
+      document.getElementById('modal-success-slot').innerText = data.voter.fingerprint_method === 'LAPTOP_HARDWARE_FINGERPRINT' ? 'Laptop Hardware Sensor' : `Slot #${data.voter.fingerprint_slot}`;
       document.getElementById('modal-success-constituency').innerText = data.voter.constituency;
 
       const modal = document.getElementById('reg-success-modal');
@@ -2117,6 +2211,10 @@ function closeRegistrationModal() {
   const nameInput = document.getElementById('reg-name');
   if (epicInput) epicInput.value = '';
   if (nameInput) nameInput.value = '';
+  regFingerprintEnrolled = false;
+  regFingerprintMethod = 'RPI_R307S_SENSOR';
+  regFingerprintCredentialId = null;
+  regCapturedPhotoBase64 = null;
   retakeRegistrationFace();
   fetchNextAvailableSlot();
 }

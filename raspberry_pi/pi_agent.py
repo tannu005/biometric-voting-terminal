@@ -138,9 +138,21 @@ def init_fingerprint(forced_port=None, forced_baud=None):
             try:
                 uart = serial.Serial(port, baudrate=baud, timeout=1.0)
                 time.sleep(0.15)
-                f = adafruit_fingerprint.Adafruit_Fingerprint(uart)
-                chk = f.check_passwd()
-                if chk == adafruit_fingerprint.OK:
+                connected = False
+                try:
+                    if f.check_passwd() == adafruit_fingerprint.OK:
+                        connected = True
+                except Exception:
+                    pass
+
+                if not connected:
+                    try:
+                        if f.read_sysparam() == adafruit_fingerprint.OK:
+                            connected = True
+                    except Exception:
+                        pass
+
+                if connected:
                     finger = f
                     finger_init_error = None
                     connected_port = port
@@ -153,7 +165,7 @@ def init_fingerprint(forced_port=None, forced_baud=None):
                         'message': f'Sensor connected on {port} @ {baud} baud'
                     }
                 else:
-                    errors[f'{port}@{baud}'] = f'Password check failed code {chk}'
+                    errors[f'{port}@{baud}'] = f'Sensor handshake failed on {port} @ {baud}'
                     uart.close()
             except Exception as e:
                 errors[f'{port}@{baud}'] = str(e)
