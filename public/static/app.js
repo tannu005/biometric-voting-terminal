@@ -1142,20 +1142,29 @@ async function checkSystemDiagnostic() {
 
   try {
     const hwResp = await fetch('/api/hardware/health');
+    const piBadge = document.getElementById('badge-pi-status');
     if (hwResp.ok) {
       const hwData = await hwResp.json();
-      const piBadge = document.getElementById('badge-pi-status');
       if (piBadge) {
         if (hwData.connected && hwData.pi?.status === 'READY') {
-          piBadge.innerText = "PI: 192.168.50.2 (ONLINE)";
+          piBadge.innerText = "PI: ONLINE";
           piBadge.classList.add('success');
         } else {
           piBadge.innerText = "PI: LOCAL MODE";
           piBadge.classList.remove('success');
         }
       }
+    } else if (piBadge) {
+      piBadge.innerText = "PI: LOCAL MODE";
+      piBadge.classList.remove('success');
     }
-  } catch (e) {}
+  } catch (e) {
+    const piBadge = document.getElementById('badge-pi-status');
+    if (piBadge) {
+      piBadge.innerText = "PI: LOCAL MODE";
+      piBadge.classList.remove('success');
+    }
+  }
 }
 
 let highlightedCandidateIndex = 0;
@@ -1247,6 +1256,7 @@ function startHardwareEventPolling() {
 window.addEventListener('DOMContentLoaded', () => {
   setScreenState(1);
   checkSystemDiagnostic();
+  setInterval(checkSystemDiagnostic, 4000);
   initSensorTouchListeners();
   startHardwareEventPolling();
 });

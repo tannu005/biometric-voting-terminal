@@ -454,8 +454,13 @@ def load_candidates() -> list:
 
 PI_URL = os.environ.get("PI_URL", "http://192.168.50.2:8000").rstrip("/")
 EVM_DEVICE_TOKEN = os.environ.get("EVM_DEVICE_TOKEN", "EVM-DEVICE-SECURE-LAN-TOKEN")
-PI_HEADERS = {"X-Device-Token": EVM_DEVICE_TOKEN}
-PI_TIMEOUT = 1.0
+PI_HEADERS = {
+    "X-Device-Token": EVM_DEVICE_TOKEN,
+    "ngrok-skip-browser-warning": "true",
+    "User-Agent": "EVM-Kiosk-Agent"
+}
+PI_TIMEOUT = 4.0
+
 
 def query_pi_hardware(method: str, path: str, timeout: Optional[float] = None, **kwargs) -> Optional[Dict[str, Any]]:
     to = timeout if timeout is not None else PI_TIMEOUT
