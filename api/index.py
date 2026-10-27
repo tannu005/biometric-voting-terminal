@@ -9,9 +9,9 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 try:
-    from app import app
+    from app import app as _fastapi_app
 
-    class VercelPathMiddleware:
+    class VercelPathASGIApp:
         def __init__(self, inner: ASGIApp):
             self.inner = inner
 
@@ -23,10 +23,12 @@ try:
                     if "path" in params and params["path"]:
                         target = params.pop("path")[0].strip("/")
                         scope["path"] = f"/api/{target}"
+                        scope["raw_path"] = f"/api/{target}".encode("ascii")
                         scope["query_string"] = urllib.parse.urlencode(params, doseq=True).encode("latin1")
             await self.inner(scope, receive, send)
 
-    app.add_middleware(VercelPathMiddleware)
+    app = VercelPathASGIApp(_fastapi_app)
+    handler = app
 
 except Exception:
     err_str = traceback.format_exc()
@@ -38,3 +40,4 @@ except Exception:
     @app.api_route('/{full_path:path}', methods=['GET', 'POST', 'PUT', 'DELETE'])
     def catch_all(full_path: str = ""):
         return PlainTextResponse(f"Startup Exception:\n{err_str}", status_code=500)
+    handler = app
