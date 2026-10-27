@@ -13,7 +13,8 @@ from hardware.as608 import AS608Driver
 from biometrics.face_verify import FacialVerificationPipeline
 from biometrics.fusion_engine import BiometricFusionEngine
 from backend.crypto_utils import DecoupledCryptoEngine
-from backend.app import app
+from app import app
+
 
 class TestAS608Driver(unittest.TestCase):
     def setUp(self):
