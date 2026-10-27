@@ -136,7 +136,7 @@ def init_fingerprint(forced_port=None, forced_baud=None):
         for baud in candidate_bauds:
             uart = None
             try:
-                uart = serial.Serial(port, baudrate=baud, timeout=1.0)
+                uart = serial.Serial(port, baudrate=baud, timeout=2.0)
                 time.sleep(0.15)
                 f = adafruit_fingerprint.Adafruit_Fingerprint(uart)
                 finger = f
@@ -285,6 +285,35 @@ def reset_display(_auth: bool = Depends(authorize)):
     show_message('EVM Terminal\nEnter Voter ID')
     return {'ok': True, 'message': 'LCD display reset and resynchronized'}
 
+def safe_get_image(timeout_sec: float = 15.0) -> bool:
+    global finger
+    deadline = time.monotonic() + timeout_sec
+    import adafruit_fingerprint
+    while time.monotonic() < deadline:
+        if finger is None:
+            init_fingerprint()
+            if finger is None:
+                time.sleep(0.5)
+                continue
+        try:
+            # Clear input buffer to guarantee clean packet header alignment
+            if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
+                if finger._uart.in_waiting > 64:
+                    finger._uart.reset_input_buffer()
+            res = finger.get_image()
+            if res == adafruit_fingerprint.OK:
+                return True
+        except RuntimeError:
+            try:
+                if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
+                    finger._uart.reset_input_buffer()
+            except Exception:
+                pass
+        except Exception:
+            time.sleep(0.1)
+        time.sleep(0.2)
+    return False
+
 @agent_app.post('/fingerprint/match')
 def fingerprint_match(_auth: bool = Depends(authorize)):
     global finger
@@ -299,43 +328,42 @@ def fingerprint_match(_auth: bool = Depends(authorize)):
         )
 
     with hardware_lock:
-        show_message('Place your finger' + chr(10) + 'on sensor...')
-        deadline = time.monotonic() + 15
         import adafruit_fingerprint
-        while time.monotonic() < deadline:
-            result = finger.get_image()
-            if result == adafruit_fingerprint.OK:
-                break
-            if result != adafruit_fingerprint.NOFINGER:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f'Fingerprint image capture error: {result}',
-                )
-            time.sleep(0.15)
-        else:
+        show_message('Place your finger' + chr(10) + 'on sensor...')
+
+        if not safe_get_image(timeout_sec=15.0):
             show_message('Scan timeout' + chr(10) + 'Try again')
             return {'matched': False, 'reason': 'timeout'}
 
-        result = finger.image_2_tz(1)
-        if result != adafruit_fingerprint.OK:
-            show_message('Feature error' + chr(10) + 'Try again')
-            return {'matched': False, 'reason': 'could_not_extract_features', 'sensor_code': result}
+        try:
+            if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
+                finger._uart.reset_input_buffer()
+        except Exception:
+            pass
 
-        result = finger.finger_search()
-        if result == adafruit_fingerprint.OK:
-            show_message(f'Match Confirmed' + chr(10) + f'Slot #{int(finger.finger_id)}')
-            score_val = min(100, int(finger.confidence * 100 / 200)) if finger.confidence > 0 else 92
-            return {
-                'matched': True,
-                'template_id': int(finger.finger_id),
-                'confidence': int(finger.confidence),
-                'score': score_val
-            }
-        if result == adafruit_fingerprint.NOTFOUND:
-            show_message('No Match Found' + chr(10) + 'Rejected')
-            return {'matched': False, 'reason': 'no_template_match'}
+        try:
+            res = finger.image_2_tz(1)
+            if res != adafruit_fingerprint.OK:
+                show_message('Feature error' + chr(10) + 'Try again')
+                return {'matched': False, 'reason': 'could_not_extract_features', 'sensor_code': res}
 
-        raise HTTPException(status_code=500, detail=f'Fingerprint search error: {result}')
+            res = finger.finger_search()
+            if res == adafruit_fingerprint.OK:
+                show_message(f'Match Confirmed' + chr(10) + f'Slot #{int(finger.finger_id)}')
+                score_val = min(100, int(finger.confidence * 100 / 200)) if finger.confidence > 0 else 92
+                return {
+                    'matched': True,
+                    'template_id': int(finger.finger_id),
+                    'confidence': int(finger.confidence),
+                    'score': score_val
+                }
+            if res == adafruit_fingerprint.NOTFOUND:
+                show_message('No Match Found' + chr(10) + 'Rejected')
+                return {'matched': False, 'reason': 'no_template_match'}
+        except Exception as exc:
+            return {'matched': False, 'reason': f'Sensor read error: {exc}'}
+
+        return {'matched': False, 'reason': f'Search code {res}'}
 
 @agent_app.post('/fingerprint/enroll')
 def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(authorize)):
@@ -355,61 +383,73 @@ def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(auth
 
     with hardware_lock:
         import adafruit_fingerprint
+
+        def flush_buf():
+            try:
+                if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
+                    finger._uart.reset_input_buffer()
+            except Exception:
+                pass
+
+        flush_buf()
         show_message(f'Enroll Slot #{slot}' + chr(10) + 'Place Finger...')
 
-        # Step 1: First finger placement
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            res = finger.get_image()
-            if res == adafruit_fingerprint.OK:
-                break
-            time.sleep(0.15)
-        else:
+        # Step 1: First finger touch
+        if not safe_get_image(timeout_sec=16.0):
             show_message('Enroll Timeout' + chr(10) + 'Try Again')
-            return {'enrolled': False, 'reason': 'timeout_finger_1'}
+            return {'enrolled': False, 'reason': 'timeout_finger_1', 'message': 'First touch timed out. Place finger firmly on sensor.'}
 
-        res = finger.image_2_tz(1)
+        flush_buf()
+        try:
+            res = finger.image_2_tz(1)
+        except Exception as e:
+            return {'enrolled': False, 'reason': 'feature_err_1', 'message': f'Minutiae read error: {e}'}
+
         if res != adafruit_fingerprint.OK:
             show_message('Feature Error' + chr(10) + 'Try Again')
-            return {'enrolled': False, 'reason': 'feature_extraction_failed_1'}
+            return {'enrolled': False, 'reason': 'feature_extraction_failed_1', 'message': f'Feature extraction failed (code {res}). Place finger flat.'}
 
+        # Step 2: Remove finger
         show_message('Remove Finger...' + chr(10) + 'Wait 2 secs')
         time.sleep(2)
 
-        # Step 2: Second finger placement
+        # Step 3: Second confirmation touch
         show_message('Place Again' + chr(10) + 'Same Finger...')
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            res = finger.get_image()
-            if res == adafruit_fingerprint.OK:
-                break
-            time.sleep(0.15)
-        else:
+        if not safe_get_image(timeout_sec=16.0):
             show_message('Enroll Timeout' + chr(10) + 'Try Again')
-            return {'enrolled': False, 'reason': 'timeout_finger_2'}
+            return {'enrolled': False, 'reason': 'timeout_finger_2', 'message': 'Second confirmation touch timed out. Try again.'}
 
-        res = finger.image_2_tz(2)
+        flush_buf()
+        try:
+            res = finger.image_2_tz(2)
+        except Exception as e:
+            return {'enrolled': False, 'reason': 'feature_err_2', 'message': f'Minutiae read error: {e}'}
+
         if res != adafruit_fingerprint.OK:
             show_message('Feature Error' + chr(10) + 'Try Again')
-            return {'enrolled': False, 'reason': 'feature_extraction_failed_2'}
+            return {'enrolled': False, 'reason': 'feature_extraction_failed_2', 'message': f'Second feature extraction failed (code {res}).'}
 
-        # Step 3: Create model and store in flash
-        res = finger.create_model()
-        if res != adafruit_fingerprint.OK:
-            show_message('Prints Differ' + chr(10) + 'Enroll Failed')
-            return {'enrolled': False, 'reason': 'prints_do_not_match'}
+        # Step 4: Model creation and flash burn
+        flush_buf()
+        try:
+            res = finger.create_model()
+            if res != adafruit_fingerprint.OK:
+                show_message('Prints Differ' + chr(10) + 'Enroll Failed')
+                return {'enrolled': False, 'reason': 'prints_do_not_match', 'message': 'Prints did not match. Please use the exact same finger.'}
 
-        res = finger.store_model(slot)
-        if res != adafruit_fingerprint.OK:
-            show_message('Store Failed' + chr(10) + f'Code: {res}')
-            return {'enrolled': False, 'reason': f'store_failed_{res}'}
+            res = finger.store_model(slot)
+            if res != adafruit_fingerprint.OK:
+                show_message('Store Failed' + chr(10) + f'Code: {res}')
+                return {'enrolled': False, 'reason': f'store_failed_{res}', 'message': f'Sensor storage failed (code {res}).'}
+        except Exception as exc:
+            return {'enrolled': False, 'reason': 'model_store_err', 'message': f'Store error: {exc}'}
 
-        show_message('Enroll Success!' + chr(10) + f'Slot #{slot} Stored')
+        show_message(f'Slot #{slot} Stored' + chr(10) + 'Enroll Success!')
         return {
             'enrolled': True,
             'slot': slot,
             'mode': 'R307S_HARDWARE',
-            'message': f'Fingerprint enrolled and stored in Slot #{slot}'
+            'message': f'Fingerprint burned to R307S hardware slot #{slot}'
         }
 
 @agent_app.api_route('/camera/capture', methods=['GET', 'POST'])
