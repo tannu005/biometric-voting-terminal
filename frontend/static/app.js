@@ -1056,13 +1056,23 @@ async function triggerRpiR307SFingerprint() {
     } else {
       audio.errorTone();
       if (graphic) graphic.classList.remove('scanning');
-      statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;">MATCH_FAIL: ${ver.message}</span>`;
+      statusText.innerHTML = `
+        <div style="color: var(--accent-rose); font-weight: 600; margin-bottom: 6px;">MATCH_FAIL: ${ver.message}</div>
+        <button type="button" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px;" onclick="triggerFingerprintReconnect()">
+          🔄 Scan & Reconnect Sensor
+        </button>
+      `;
       updatePiDisplay("Match Fail\nTry Again");
     }
   } catch (err) {
     audio.errorTone();
     if (graphic) graphic.classList.remove('scanning');
-    statusText.innerText = "Raspberry Pi Ethernet communication timeout.";
+    statusText.innerHTML = `
+      <div style="color: var(--accent-rose); font-weight: 600; margin-bottom: 6px;">Raspberry Pi communication error: ${err.message || err}</div>
+      <button type="button" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px;" onclick="triggerFingerprintReconnect()">
+        🔄 Scan & Reconnect Sensor
+      </button>
+    `;
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1341,6 +1351,7 @@ async function checkSystemDiagnostic() {
   try {
     const hwResp = await fetch('/api/hardware/health');
     const piBadge = document.getElementById('badge-pi-status');
+    const as608Badge = document.getElementById('badge-as608-status');
     if (hwResp.ok) {
       const hwData = await hwResp.json();
       if (piBadge) {
@@ -1355,6 +1366,15 @@ async function checkSystemDiagnostic() {
           isPiOnline = false;
           piBadge.innerText = "PI: LOCAL MODE";
           piBadge.classList.remove('success');
+        }
+      }
+      if (as608Badge) {
+        if (hwData.connected && hwData.pi?.fingerprint_ready) {
+          as608Badge.innerText = `R307S: READY (${hwData.pi.fingerprint_port || 'UART'})`;
+          as608Badge.classList.add('success');
+        } else if (hwData.connected && hwData.pi) {
+          as608Badge.innerText = "R307S: OFFLINE";
+          as608Badge.classList.remove('success');
         }
       }
     } else if (piBadge) {
@@ -1890,31 +1910,118 @@ async function enrollRegistrationFingerprint() {
     });
     const data = await resp.json();
 
-    if (data.enrolled) {
+    if (data.enrolled && data.mode === 'R307S_HARDWARE') {
       audio.successChord();
       if (badge) {
         badge.className = 'badge success';
         badge.innerText = `ENROLLED (SLOT #${regCurrentSlot})`;
       }
       if (statusText) {
-        statusText.innerHTML = `<span style="color: #34d399; font-weight: 700;">✓ ${data.message}</span>`;
+        statusText.innerHTML = `<span style="color: #34d399; font-weight: 700;">✓ ${data.message || `Fingerprint burned to hardware Slot #${regCurrentSlot}`}</span>`;
       }
     } else {
       audio.errorTone();
       if (badge) {
         badge.className = 'badge';
         badge.style.color = '#f43f5e';
-        badge.innerText = 'ENROLL FAILED';
+        badge.innerText = (data.mode === 'OFFLINE' || data.mode === 'DISCONNECTED') ? 'SENSOR OFFLINE' : 'ENROLL FAILED';
       }
       if (statusText) {
-        statusText.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;">Enrollment failed: ${data.reason || 'Sensor timeout'}</span>`;
+        const errorMsg = data.message || data.reason || 'Sensor offline or timed out';
+        statusText.innerHTML = `
+          <div style="color: var(--accent-rose); font-weight: 600; margin-bottom: 6px;">❌ ${errorMsg}</div>
+          <div style="font-size: 0.78rem; color: #94a3b8; line-height: 1.4; margin-bottom: 8px;">
+            Check R307S UART wiring: Red=5V/3.3V, Black=GND, White(RX)=Pi Pin 8 (TXD), Green(TX)=Pi Pin 10 (RXD).
+          </div>
+          <button type="button" class="btn-secondary" style="font-size: 0.75rem; padding: 5px 12px; cursor: pointer;" onclick="triggerFingerprintReconnect()">
+            🔄 Scan & Reconnect Sensor
+          </button>
+        `;
       }
     }
   } catch (err) {
     audio.errorTone();
-    if (statusText) statusText.innerText = "Error communicating with hardware agent. Template slot will still be reserved.";
+    if (badge) {
+      badge.className = 'badge';
+      badge.style.color = '#f43f5e';
+      badge.innerText = 'COMM ERROR';
+    }
+    if (statusText) {
+      statusText.innerHTML = `
+        <div style="color: var(--accent-rose); font-weight: 600; margin-bottom: 6px;">❌ Communication error reaching Raspberry Pi hardware agent.</div>
+        <button type="button" class="btn-secondary" style="font-size: 0.75rem; padding: 5px 12px; cursor: pointer;" onclick="triggerFingerprintReconnect()">
+          🔄 Scan & Reconnect Sensor
+        </button>
+      `;
+    }
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+async function triggerFingerprintReconnect() {
+  audio.beep(650, 0.08);
+  const statusText = document.getElementById('reg-fp-status-text') || document.getElementById('fingerprint-status-text');
+  const badge = document.getElementById('reg-fp-badge');
+  const as608Badge = document.getElementById('badge-as608-status');
+
+  if (badge) {
+    badge.className = 'badge pulse';
+    badge.innerText = 'SCANNING...';
+  }
+  if (statusText) {
+    statusText.innerHTML = `<span style="color: #38bdf8;">🔄 Scanning Raspberry Pi serial ports (/dev/serial0, /dev/ttyUSB0, /dev/ttyAMA0, /dev/ttyS0) across bauds (57600, 9600, 115200)...</span>`;
+  }
+
+  try {
+    const resp = await fetch('/api/hardware/fingerprint-reconnect', { method: 'POST' });
+    const data = await resp.json();
+
+    if (data.ok) {
+      audio.successChord();
+      if (badge) {
+        badge.className = 'badge success';
+        badge.innerText = 'SENSOR READY';
+      }
+      if (as608Badge) {
+        as608Badge.innerText = `R307S: READY (${data.port || 'UART'})`;
+        as608Badge.classList.add('success');
+      }
+      if (statusText) {
+        statusText.innerHTML = `<span style="color: #34d399; font-weight: 700;">✓ R307S Optical Sensor detected & initialized on ${data.port} @ ${data.baud} baud!</span>`;
+      }
+    } else {
+      audio.errorTone();
+      if (badge) {
+        badge.className = 'badge';
+        badge.style.color = '#f43f5e';
+        badge.innerText = 'NOT FOUND';
+      }
+      if (as608Badge) {
+        as608Badge.innerText = 'R307S: OFFLINE';
+        as608Badge.classList.remove('success');
+      }
+      if (statusText) {
+        const ports = (data.candidate_ports || []).join(', ') || '/dev/serial0, /dev/ttyUSB0, /dev/ttyAMA0';
+        statusText.innerHTML = `
+          <div style="color: var(--accent-rose); font-weight: 700; margin-bottom: 4px;">❌ Sensor not responding on any scanned ports (${ports})</div>
+          <div style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.4; text-align: left; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; margin: 6px 0;">
+            <strong>Hardware Checklist:</strong><br/>
+            1. <strong>Wires crossed?</strong> Pi Pin 8 (TXD) ➔ Sensor White (RX); Pi Pin 10 (RXD) ➔ Sensor Green (TX).<br/>
+            2. <strong>Power:</strong> Sensor Red ➔ 5V or 3.3V; Sensor Black ➔ GND (Pin 6).<br/>
+            3. <strong>Serial Console Disabled:</strong> In terminal run <code>sudo raspi-config</code> ➔ Interface Options ➔ Serial Port ➔ Login Shell: <strong>No</strong>, Hardware Serial: <strong>Yes</strong>, then reboot.
+          </div>
+          <button type="button" class="btn-secondary" style="font-size: 0.75rem; padding: 4px 10px;" onclick="triggerFingerprintReconnect()">
+            🔄 Scan Again
+          </button>
+        `;
+      }
+    }
+  } catch (err) {
+    audio.errorTone();
+    if (statusText) {
+      statusText.innerHTML = `<span style="color: var(--accent-rose);">Failed to reach reconnect endpoint: ${err.message || err}</span>`;
+    }
   }
 }
 

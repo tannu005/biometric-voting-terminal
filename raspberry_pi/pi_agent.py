@@ -81,14 +81,97 @@ def show_message(message: str):
 
 finger = None
 finger_init_error = None
-try:
-    import adafruit_fingerprint
-    uart = serial.Serial(FINGERPRINT_PORT, baudrate=FINGERPRINT_BAUD, timeout=1)
-    finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
-    print('R307S/AS608 Fingerprint sensor initialized.')
-except Exception as exc:
-    finger_init_error = str(exc)
-    print('Fingerprint sensor unavailable:', exc)
+connected_port = None
+connected_baud = None
+
+def init_fingerprint(forced_port=None, forced_baud=None):
+    global finger, finger_init_error, connected_port, connected_baud
+    import glob
+
+    try:
+        import adafruit_fingerprint
+    except Exception as exc:
+        finger_init_error = f'adafruit_fingerprint module missing: {exc}'
+        print(finger_init_error)
+        return {'ok': False, 'error': finger_init_error}
+
+    if finger is not None:
+        try:
+            finger.uart.close()
+        except Exception:
+            pass
+        finger = None
+
+    candidate_ports = []
+    if forced_port:
+        candidate_ports.append(forced_port)
+    elif os.environ.get('FINGERPRINT_PORT'):
+        candidate_ports.append(os.environ.get('FINGERPRINT_PORT'))
+
+    auto_ports = [
+        '/dev/serial0',
+        '/dev/ttyUSB0',
+        '/dev/ttyUSB1',
+        '/dev/ttyACM0',
+        '/dev/ttyAMA0',
+        '/dev/ttyS0',
+    ]
+    for usb_dev in glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*'):
+        if usb_dev not in auto_ports:
+            auto_ports.insert(0, usb_dev)
+
+    for p in auto_ports:
+        if p not in candidate_ports and os.path.exists(p):
+            candidate_ports.append(p)
+    if not candidate_ports:
+        candidate_ports = ['/dev/serial0', '/dev/ttyS0', '/dev/ttyUSB0']
+
+    candidate_bauds = [forced_baud] if forced_baud else [57600, 9600, 115200]
+    errors = {}
+
+    for port in candidate_ports:
+        if not os.path.exists(port):
+            errors[port] = 'Device file not found'
+            continue
+        for baud in candidate_bauds:
+            uart = None
+            try:
+                uart = serial.Serial(port, baudrate=baud, timeout=1.0)
+                time.sleep(0.15)
+                f = adafruit_fingerprint.Adafruit_Fingerprint(uart)
+                chk = f.check_passwd()
+                if chk == adafruit_fingerprint.OK:
+                    finger = f
+                    finger_init_error = None
+                    connected_port = port
+                    connected_baud = baud
+                    print(f'R307S Fingerprint sensor connected on {port} @ {baud} baud.')
+                    return {
+                        'ok': True,
+                        'port': port,
+                        'baud': baud,
+                        'message': f'Sensor connected on {port} @ {baud} baud'
+                    }
+                else:
+                    errors[f'{port}@{baud}'] = f'Password check failed code {chk}'
+                    uart.close()
+            except Exception as e:
+                errors[f'{port}@{baud}'] = str(e)
+                if uart:
+                    try:
+                        uart.close()
+                    except Exception:
+                        pass
+
+    finger_init_error = f'Sensor not responding on tested ports: {errors}'
+    print('Fingerprint sensor scan failed:', finger_init_error)
+    return {
+        'ok': False,
+        'errors': errors,
+        'candidate_ports': candidate_ports
+    }
+
+init_fingerprint()
 
 camera = None
 camera_type = None
@@ -162,12 +245,38 @@ def health(_auth: bool = Depends(authorize)):
         'status': 'READY',
         'fingerprint_ready': finger is not None,
         'fingerprint_error': finger_init_error,
+        'fingerprint_port': connected_port,
+        'fingerprint_baud': connected_baud,
         'camera_ready': camera is not None,
         'camera_type': camera_type,
         'camera_error': camera_error,
         'lcd_ready': lcd is not None,
         'switches_ready': list(buttons.keys()),
         'timestamp': time.time()
+    }
+
+@agent_app.api_route('/fingerprint/reconnect', methods=['GET', 'POST'])
+def reconnect_fingerprint(port: Optional[str] = None, baud: Optional[int] = None, _auth: bool = Depends(authorize)):
+    with hardware_lock:
+        res = init_fingerprint(forced_port=port, forced_baud=baud)
+    return res
+
+@agent_app.get('/fingerprint/diagnostic')
+def diagnostic_fingerprint(_auth: bool = Depends(authorize)):
+    import glob
+    available_devices = {
+        'dev_serial': glob.glob('/dev/serial*'),
+        'dev_ttyUSB': glob.glob('/dev/ttyUSB*'),
+        'dev_ttyACM': glob.glob('/dev/ttyACM*'),
+        'dev_ttyAMA': glob.glob('/dev/ttyAMA*'),
+        'dev_ttyS': glob.glob('/dev/ttyS*'),
+    }
+    return {
+        'fingerprint_ready': finger is not None,
+        'connected_port': connected_port,
+        'connected_baud': connected_baud,
+        'error': finger_init_error,
+        'available_devices': available_devices
     }
 
 @agent_app.post('/display')
@@ -183,6 +292,11 @@ def reset_display(_auth: bool = Depends(authorize)):
 
 @agent_app.post('/fingerprint/match')
 def fingerprint_match(_auth: bool = Depends(authorize)):
+    global finger
+    if finger is None:
+        with hardware_lock:
+            init_fingerprint()
+
     if finger is None:
         raise HTTPException(
             status_code=503,
@@ -230,13 +344,18 @@ def fingerprint_match(_auth: bool = Depends(authorize)):
 
 @agent_app.post('/fingerprint/enroll')
 def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(authorize)):
+    global finger
     slot = req.slot
     if finger is None:
+        with hardware_lock:
+            init_fingerprint()
+
+    if finger is None:
         return {
-            'enrolled': True,
+            'enrolled': False,
             'slot': slot,
-            'mode': 'SIMULATED',
-            'message': f'Sensor offline. Reserved Slot #{slot}.'
+            'mode': 'OFFLINE',
+            'message': f'R307S Fingerprint sensor is offline: {finger_init_error}'
         }
 
     with hardware_lock:

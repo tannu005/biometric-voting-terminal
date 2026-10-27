@@ -922,14 +922,39 @@ async def register_voter(req: VoterRegistrationRequest):
 @app.post("/api/hardware/fingerprint-enroll")
 @app.post("/hardware/fingerprint-enroll")
 async def enroll_hardware_fingerprint(req: FingerprintEnrollRequest):
-    pi_resp = query_pi_hardware("POST", "/fingerprint/enroll", timeout=25.0, json={"slot": req.slot})
+    pi_resp = query_pi_hardware("POST", "/fingerprint/enroll", timeout=30.0, json={"slot": req.slot})
     if pi_resp:
         return pi_resp
     return {
-        "enrolled": True,
+        "enrolled": False,
         "slot": req.slot,
-        "mode": "LOCAL_MOCK_RESERVED",
-        "message": f"Fingerprint slot #{req.slot} reserved. Connect Pi over Ethernet to burn template to hardware."
+        "mode": "DISCONNECTED",
+        "message": f"Fingerprint hardware offline. Could not communicate with Raspberry Pi R307S sensor."
+    }
+
+@app.api_route("/api/hardware/fingerprint-reconnect", methods=["GET", "POST"])
+@app.api_route("/hardware/fingerprint-reconnect", methods=["GET", "POST"])
+async def hardware_fingerprint_reconnect(port: Optional[str] = None, baud: Optional[int] = None):
+    params = {}
+    if port: params["port"] = port
+    if baud: params["baud"] = baud
+    pi_resp = query_pi_hardware("POST", "/fingerprint/reconnect", timeout=15.0, params=params)
+    if pi_resp:
+        return pi_resp
+    return {
+        "ok": False,
+        "message": "Raspberry Pi unreachable over ngrok tunnel."
+    }
+
+@app.get("/api/hardware/fingerprint-diagnostic")
+@app.get("/hardware/fingerprint-diagnostic")
+async def hardware_fingerprint_diagnostic():
+    pi_resp = query_pi_hardware("GET", "/fingerprint/diagnostic", timeout=6.0)
+    if pi_resp:
+        return pi_resp
+    return {
+        "fingerprint_ready": False,
+        "message": "Raspberry Pi unreachable over ngrok tunnel."
     }
 
 @app.post("/api/voter/lookup")
