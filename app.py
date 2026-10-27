@@ -452,7 +452,8 @@ def load_candidates() -> list:
             pass
     return DEFAULT_CANDIDATES
 
-PI_URL = os.environ.get("PI_URL", "http://192.168.50.2:8000").rstrip("/")
+DEFAULT_PI_URL = "https://courier-reexamine-underhand.ngrok-free.dev" if os.environ.get("VERCEL") else "http://192.168.50.2:8000"
+PI_URL = os.environ.get("PI_URL", DEFAULT_PI_URL).rstrip("/")
 EVM_DEVICE_TOKEN = os.environ.get("EVM_DEVICE_TOKEN", "EVM-DEVICE-SECURE-LAN-TOKEN")
 PI_HEADERS = {
     "X-Device-Token": EVM_DEVICE_TOKEN,
@@ -460,6 +461,7 @@ PI_HEADERS = {
     "User-Agent": "EVM-Kiosk-Agent"
 }
 PI_TIMEOUT = 4.0
+
 
 
 def query_pi_hardware(method: str, path: str, timeout: Optional[float] = None, **kwargs) -> Optional[Dict[str, Any]]:
@@ -560,6 +562,7 @@ async def video_feed():
     )
 
 @app.get("/api/voter/next-slot")
+@app.get("/voter/next-slot")
 async def get_next_slot():
     next_slot = get_next_available_slot()
     voters = load_voters()
@@ -567,6 +570,7 @@ async def get_next_slot():
     return {"next_slot": next_slot, "used_slots": used_slots}
 
 @app.post("/api/voter/register")
+@app.post("/voter/register")
 async def register_voter(req: VoterRegistrationRequest):
     epic = req.epic.strip().upper()
     name = req.name.strip()
@@ -638,6 +642,7 @@ async def register_voter(req: VoterRegistrationRequest):
     }
 
 @app.post("/api/hardware/fingerprint-enroll")
+@app.post("/hardware/fingerprint-enroll")
 async def enroll_hardware_fingerprint(req: FingerprintEnrollRequest):
     pi_resp = query_pi_hardware("POST", "/fingerprint/enroll", timeout=25.0, json={"slot": req.slot})
     if pi_resp:
@@ -650,6 +655,7 @@ async def enroll_hardware_fingerprint(req: FingerprintEnrollRequest):
     }
 
 @app.post("/api/voter/lookup")
+@app.post("/voter/lookup")
 async def voter_lookup(req: VoterLookupRequest):
     epic = req.epic.strip().upper()
     voters = load_voters()
@@ -687,7 +693,14 @@ async def voter_lookup(req: VoterLookupRequest):
         "next_step": "FINGERPRINT_SCAN_STAGE"
     }
 
+@app.get("/api")
+@app.get("/api/")
+@app.get("/api/index")
+async def api_gateway_status():
+    return {"status": "ONLINE", "message": "Biometric Voting Terminal API Gateway Operational"}
+
 @app.get("/api/hardware/health")
+@app.get("/hardware/health")
 async def hardware_health():
     pi_data = query_pi_hardware("GET", "/health")
     return {
@@ -699,16 +712,19 @@ async def hardware_health():
     }
 
 @app.post("/api/hardware/display")
+@app.post("/hardware/display")
 async def hardware_display(req: HardwareDisplayRequest):
     result = query_pi_hardware("POST", "/display", json={"message": req.message})
     return {"success": result is not None, "result": result}
 
 @app.get("/api/hardware/events")
+@app.get("/hardware/events")
 async def hardware_events():
     data = query_pi_hardware("GET", "/events")
     return data or {"events": []}
 
 @app.post("/api/biometrics/face-detect")
+@app.post("/biometrics/face-detect")
 async def detect_live_face(req: FaceDetectRequest):
     try:
         raw_b64 = req.image_data
@@ -734,6 +750,7 @@ async def detect_live_face(req: FaceDetectRequest):
     }
 
 @app.post("/api/biometrics/pi-camera-capture")
+@app.post("/biometrics/pi-camera-capture")
 async def capture_pi_camera():
     try:
         resp = requests.post(f"{PI_URL}/camera/capture", headers=PI_HEADERS, timeout=6.0)
@@ -775,6 +792,7 @@ async def capture_pi_camera():
         }
 
 @app.post("/api/biometrics/face-verify")
+@app.post("/biometrics/face-verify")
 async def verify_face(req: FaceVerifyRequest):
     epic = req.epic.strip().upper()
     snapshot_frame = None
@@ -803,6 +821,7 @@ async def verify_face(req: FaceVerifyRequest):
     }
 
 @app.post("/api/biometrics/fingerprint-verify")
+@app.post("/biometrics/fingerprint-verify")
 async def verify_fingerprint(req: FingerprintVerifyRequest):
     epic = req.epic.strip().upper()
     if req.method == "RPI_R307S_SENSOR":
@@ -842,11 +861,13 @@ async def verify_fingerprint(req: FingerprintVerifyRequest):
     }
 
 @app.get("/api/biometrics/session-status/{epic}")
+@app.get("/biometrics/session-status/{epic}")
 async def get_session_status(epic: str):
     epic = epic.strip().upper()
     return fusion_engine.get_session_status(epic)
 
 @app.post("/api/ballot/authorize")
+@app.post("/ballot/authorize")
 async def authorize_ballot(req: VoterLookupRequest):
     epic = req.epic.strip().upper()
     status_summary = fusion_engine.get_session_status(epic)
@@ -872,6 +893,7 @@ async def authorize_ballot(req: VoterLookupRequest):
     }
 
 @app.post("/api/ballot/cast")
+@app.post("/ballot/cast")
 async def cast_vote(req: CastVoteRequest):
     salted_voter_hash = crypto_engine.validate_and_consume_token(req.ephemeral_token)
     if not salted_voter_hash:
@@ -925,6 +947,7 @@ async def cast_vote(req: CastVoteRequest):
     }
 
 @app.get("/api/system/status")
+@app.get("/system/status")
 async def system_status():
     blockchain_ready = False
     try:
@@ -964,6 +987,7 @@ async def system_status():
     }
 
 @app.post("/api/admin/reset")
+@app.post("/admin/reset")
 async def admin_reset():
     crypto_engine.casted_hashes.clear()
     fusion_engine.active_sessions.clear()

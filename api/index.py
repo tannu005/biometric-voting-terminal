@@ -12,7 +12,9 @@ except Exception:
     err_str = traceback.format_exc()
     from fastapi import FastAPI
     from fastapi.responses import PlainTextResponse
-    app = FastAPI()
+    app = FastAPI(title="Error Diagnostic")
+
+    @app.api_route('/', methods=['GET', 'POST', 'PUT', 'DELETE'])
     @app.api_route('/{full_path:path}', methods=['GET', 'POST', 'PUT', 'DELETE'])
-    def catch_all(full_path: str):
-        return PlainTextResponse(f'Startup Exception:\n{err_str}', status_code=500)
+    def catch_all(full_path: str = ""):
+        return PlainTextResponse(f"Startup Exception:\n{err_str}", status_code=500)
