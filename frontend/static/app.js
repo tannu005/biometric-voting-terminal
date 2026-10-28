@@ -247,8 +247,6 @@ function setScreenState(stepNumber) {
   } else if (stepNumber === 4) {
     stopAutomaticFaceTracker();
     stopPiCameraPreviewLoop();
-    lastProcessedHardwareTimestamp = Date.now() / 1000;
-    flushHardwareEvents();
     updatePiDisplay("1:Verma 2:Sunita\n3:Kabir - Press");
   } else if (stepNumber === 5) {
     stopAutomaticFaceTracker();
@@ -1542,15 +1540,50 @@ function flashButtonPressBadge(switchName) {
   }, 1200);
 }
 
+function showToast(msg) {
+  let toast = document.getElementById('evm-global-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'evm-global-toast';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '28px';
+    toast.style.right = '28px';
+    toast.style.background = '#0f172a';
+    toast.style.border = '2px solid #38bdf8';
+    toast.style.color = '#ffffff';
+    toast.style.padding = '14px 24px';
+    toast.style.borderRadius = '12px';
+    toast.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.4)';
+    toast.style.fontWeight = '700';
+    toast.style.fontSize = '1rem';
+    toast.style.zIndex = '9999';
+    toast.style.transition = 'all 0.2s ease';
+    toast.style.pointerEvents = 'none';
+    document.body.appendChild(toast);
+  }
+  toast.innerText = msg;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateY(0)';
+  if (toast._hideTimeout) clearTimeout(toast._hideTimeout);
+  toast._hideTimeout = setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+  }, 2200);
+}
+
 function handlePhysicalSwitchEvent(switchName) {
   const now = Date.now();
-  if (now - lastSwitchPressTime < 300) {
+  if (now - lastSwitchPressTime < 250) {
     return; // Hardware switch debounce
   }
   lastSwitchPressTime = now;
 
+  const btnNum = switchName === 'switch_1' ? '1' : switchName === 'switch_2' ? '2' : switchName === 'switch_3' ? '3' : switchName;
+  console.log(`[EVM HW] Physical Switch ${switchName} (Button ${btnNum}) pressed!`);
+
   audio.beep(880, 0.05);
   flashButtonPressBadge(switchName);
+  showToast(`🔘 Hardware Button ${btnNum} Pressed!`);
 
   const regScreen = document.getElementById('screen-register');
   if (regScreen && regScreen.style.display === 'block') {
@@ -1621,15 +1654,9 @@ function startHardwareEventPolling() {
       const resp = await fetch('/api/hardware/events');
       if (resp.ok) {
         const data = await resp.json();
-        if (data.events && Array.isArray(data.events)) {
+        if (data.events && Array.isArray(data.events) && data.events.length > 0) {
           for (const ev of data.events) {
             if (ev.type === 'switch_pressed' && ev.switch) {
-              if (ev.timestamp && ev.timestamp <= lastProcessedHardwareTimestamp) {
-                continue; // Skip stale or already-processed event
-              }
-              if (ev.timestamp) {
-                lastProcessedHardwareTimestamp = ev.timestamp;
-              }
               handlePhysicalSwitchEvent(ev.switch);
             }
           }
@@ -1639,7 +1666,7 @@ function startHardwareEventPolling() {
     } finally {
       isHardwarePollingBusy = false;
     }
-  }, 400);
+  }, 350);
 }
 
 window.addEventListener('keydown', (e) => {
