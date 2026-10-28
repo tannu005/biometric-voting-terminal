@@ -1121,24 +1121,35 @@ async def capture_pi_camera():
                         }
                 except Exception:
                     pass
-            return {
-                "success": True,
-                "image_data": b64_str,
-                "detection": detection,
-                "source": "raspberry_pi_camera"
-            }
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "image_data": b64_str,
+                    "detection": detection,
+                    "source": "raspberry_pi_camera"
+                },
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+            )
         else:
-            return {
-                "success": False,
-                "error": "PI_CAMERA_ERROR",
-                "message": f"Raspberry Pi camera returned status {resp.status_code}"
-            }
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "error": "PI_CAMERA_ERROR",
+                    "message": f"Raspberry Pi camera returned status {resp.status_code}"
+                },
+                status_code=502,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+            )
     except Exception as exc:
-        return {
-            "success": False,
-            "error": "PI_CAMERA_UNREACHABLE",
-            "message": f"Could not connect to Raspberry Pi camera at {PI_URL}: {exc}"
-        }
+        return JSONResponse(
+            content={
+                "success": False,
+                "error": "PI_CAMERA_UNREACHABLE",
+                "message": f"Could not connect to Raspberry Pi camera at {PI_URL}: {exc}"
+            },
+            status_code=503,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+        )
 
 @app.post("/api/biometrics/face-verify")
 @app.post("/biometrics/face-verify")

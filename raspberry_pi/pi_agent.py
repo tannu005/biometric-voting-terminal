@@ -44,10 +44,21 @@ def init_lcd():
             except Exception:
                 pass
         from RPLCD.i2c import CharLCD
-        lcd = CharLCD('PCF8574', address=0x27, port=1, cols=16, rows=2, auto_linebreaks=False)
-        time.sleep(0.05)
-        print('I2C LCD display initialized.')
-        return True
+        for addr in [0x27, 0x3F]:
+            try:
+                test_lcd = CharLCD('PCF8574', address=addr, port=1, cols=16, rows=2, auto_linebreaks=False)
+                try:
+                    test_lcd.backlight_enabled = True
+                except Exception:
+                    pass
+                lcd = test_lcd
+                time.sleep(0.05)
+                print(f'I2C LCD display initialized at address 0x{addr:02X}.')
+                return True
+            except Exception:
+                pass
+        print('LCD display unavailable on 0x27 or 0x3F')
+        return False
     except Exception as exc:
         print('LCD display unavailable:', exc)
         return False
@@ -81,71 +92,97 @@ def show_message(message: str):
             except Exception:
                 pass
 
+show_message('EVM Terminal\nSystem Online')
+
 finger = None
 finger_init_error = None
 connected_port = None
 connected_baud = None
 
-def patch_adafruit_fingerprint(sensor_obj):
-    import struct
-    original_send = sensor_obj._send_packet
+def patch_adafruit_class():
+    try:
+        import adafruit_fingerprint
+        import struct
 
-    def robust_send_packet(data):
-        uart = getattr(sensor_obj, '_uart', getattr(sensor_obj, 'uart', None))
-        if uart and hasattr(uart, 'reset_input_buffer'):
-            try:
-                uart.reset_input_buffer()
-            except Exception:
-                pass
-        return original_send(data)
+        def robust_send_packet(self, data):
+            uart = getattr(self, '_uart', getattr(self, 'uart', None))
+            if uart and hasattr(uart, 'reset_input_buffer'):
+                try:
+                    uart.reset_input_buffer()
+                except Exception:
+                    pass
+            packet = [0xEF, 0x01]
+            packet += self.address
+            packet.append(0x01)
+            length = len(data) + 2
+            packet.append(length >> 8)
+            packet.append(length & 0xFF)
+            packet += data
+            checksum = sum(packet[6:])
+            packet.append(checksum >> 8)
+            packet.append(checksum & 0xFF)
+            uart.write(bytes(packet))
 
-    def robust_get_packet(expected: int):
-        uart = getattr(sensor_obj, '_uart', getattr(sensor_obj, 'uart', None))
-        if not uart:
-            raise RuntimeError("UART interface unavailable on fingerprint sensor")
-        start_time = time.monotonic()
-        timeout = getattr(uart, 'timeout', 2.5) or 2.5
+        def robust_get_packet(self, expected: int):
+            uart = getattr(self, '_uart', getattr(self, 'uart', None))
+            if not uart:
+                raise RuntimeError("UART interface unavailable on fingerprint sensor")
+            start_time = time.monotonic()
+            timeout = getattr(uart, 'timeout', 2.5) or 2.5
 
-        # 1. Slide through stream to synchronize on start code 0xEF01
-        header = bytearray()
-        while time.monotonic() - start_time < timeout:
-            b = uart.read(1)
-            if not b:
-                continue
-            header += b
-            if len(header) >= 2:
-                if header[-2:] == b'\xef\x01':
-                    break
-                header = header[-1:]
-        else:
-            raise RuntimeError("Sensor packet timeout: 0xEF01 header not found")
-
-        # 2. Read remaining (expected - 2) bytes
-        needed = expected - 2
-        rest = bytearray()
-        while len(rest) < needed and (time.monotonic() - start_time < timeout):
-            chunk = uart.read(needed - len(rest))
-            if chunk:
-                rest += chunk
+            header = bytearray()
+            while time.monotonic() - start_time < timeout:
+                b = uart.read(1)
+                if not b:
+                    continue
+                header += b
+                if len(header) >= 2:
+                    if header[-2:] == b'\xef\x01':
+                        break
+                    header = header[-1:]
             else:
-                time.sleep(0.005)
+                raise RuntimeError("Sensor packet timeout: 0xEF01 header not found")
 
-        if len(rest) < needed:
-            raise RuntimeError(f"Sensor packet incomplete: got {len(rest)} of {needed} bytes")
+            needed = expected - 2
+            rest = bytearray()
+            while len(rest) < needed and (time.monotonic() - start_time < timeout):
+                chunk = uart.read(needed - len(rest))
+                if chunk:
+                    rest += chunk
+                else:
+                    time.sleep(0.005)
 
-        res = b'\xef\x01' + bytes(rest)
-        addr = list(res[2:6])
-        if addr != sensor_obj.address:
-            raise RuntimeError(f"Incorrect address: {addr}")
-        packet_type, length = struct.unpack(">BH", res[6:9])
-        if packet_type != 0x07:
-            raise RuntimeError(f"Incorrect packet type {packet_type}")
+            if len(rest) < needed:
+                raise RuntimeError(f"Sensor packet incomplete: got {len(rest)} of {needed} bytes")
 
-        reply = list(res[9 : 9 + (length - 2)])
-        return reply
+            res = b'\xef\x01' + bytes(rest)
+            addr = list(res[2:6])
+            if addr != self.address:
+                raise RuntimeError(f"Incorrect address: {addr}")
+            packet_type, length = struct.unpack(">BH", res[6:9])
+            if packet_type != 0x07:
+                raise RuntimeError(f"Incorrect packet type {packet_type}")
 
-    sensor_obj._send_packet = robust_send_packet
-    sensor_obj._get_packet = robust_get_packet
+            reply = list(res[9 : 9 + (length - 2)])
+            return reply
+
+        adafruit_fingerprint.Adafruit_Fingerprint._send_packet = robust_send_packet
+        adafruit_fingerprint.Adafruit_Fingerprint._get_packet = robust_get_packet
+    except Exception as exc:
+        print('Could not patch adafruit_fingerprint class:', exc)
+
+patch_adafruit_class()
+
+def turn_sensor_led(on: bool):
+    global finger
+    if finger and hasattr(finger, 'set_led'):
+        try:
+            if on:
+                finger.set_led(color=1, mode=3)
+            else:
+                finger.set_led(mode=4)
+        except Exception:
+            pass
 
 def init_fingerprint(forced_port=None, forced_baud=None):
     global finger, finger_init_error, connected_port, connected_baud
@@ -202,7 +239,6 @@ def init_fingerprint(forced_port=None, forced_baud=None):
                     uart.reset_output_buffer()
                 time.sleep(0.15)
                 f = adafruit_fingerprint.Adafruit_Fingerprint(uart)
-                patch_adafruit_fingerprint(f)
                 finger = f
                 finger_init_error = None
                 connected_port = port
@@ -355,20 +391,24 @@ def safe_get_image(timeout_sec: float = 20.0) -> bool:
     global finger
     deadline = time.monotonic() + timeout_sec
     import adafruit_fingerprint
-    while time.monotonic() < deadline:
-        if finger is None:
-            init_fingerprint()
+    turn_sensor_led(True)
+    try:
+        while time.monotonic() < deadline:
             if finger is None:
-                time.sleep(0.5)
-                continue
-        try:
-            res = finger.get_image()
-            if res == adafruit_fingerprint.OK:
-                return True
-        except Exception:
-            time.sleep(0.1)
-        time.sleep(0.15)
-    return False
+                init_fingerprint()
+                if finger is None:
+                    time.sleep(0.5)
+                    continue
+            try:
+                res = finger.get_image()
+                if res == adafruit_fingerprint.OK:
+                    return True
+            except Exception:
+                time.sleep(0.1)
+            time.sleep(0.15)
+        return False
+    finally:
+        turn_sensor_led(False)
 
 @agent_app.post('/fingerprint/match')
 def fingerprint_match(_auth: bool = Depends(authorize)):

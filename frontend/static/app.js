@@ -441,7 +441,7 @@ async function pollPiCameraFrame() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6500);
 
-    const resp = await fetch('/api/biometrics/pi-camera-capture', {
+    const resp = await fetch('/api/biometrics/pi-camera-capture?t=' + Date.now(), {
       method: 'POST',
       signal: controller.signal
     });
@@ -1733,7 +1733,7 @@ async function captureRegistrationPiCamera() {
 
   try {
     updatePiDisplay("Capturing Photo\nLook at Camera");
-    const resp = await fetch('/api/biometrics/pi-camera-capture', { method: 'POST' });
+    const resp = await fetch('/api/biometrics/pi-camera-capture?t=' + Date.now(), { method: 'POST' });
     const data = await resp.json();
 
     if (!data.success || !data.image_data) {
