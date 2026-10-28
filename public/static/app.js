@@ -1458,6 +1458,12 @@ async function checkSystemDiagnostic() {
             as608Badge.classList.remove('success');
           }
         }
+        const btnBadge = document.getElementById('badge-buttons-status');
+        if (btnBadge && !btnBadge.innerText.includes('PRESSED')) {
+          const switchCount = hwData.pi.switches_ready ? hwData.pi.switches_ready.length : 3;
+          btnBadge.className = 'badge success';
+          btnBadge.innerText = `BUTTONS: READY (${switchCount})`;
+        }
         if (KioskState.currentStep === 3 && currentCameraSource !== 'pi' && !userSelectedCameraOverride) {
           setCameraSource('pi');
         }
@@ -1519,6 +1525,23 @@ async function flushHardwareEvents() {
   } catch (e) {}
 }
 
+function flashButtonPressBadge(switchName) {
+  const badge = document.getElementById('badge-buttons-status');
+  if (!badge) return;
+  const btnNum = switchName === 'switch_1' ? '1' : switchName === 'switch_2' ? '2' : switchName === 'switch_3' ? '3' : switchName;
+  badge.className = 'badge success pulse';
+  badge.style.background = '#059669';
+  badge.style.borderColor = '#34d399';
+  badge.innerText = `🔘 BTN ${btnNum} PRESSED!`;
+  if (badge._resetTimeout) clearTimeout(badge._resetTimeout);
+  badge._resetTimeout = setTimeout(() => {
+    badge.className = 'badge success';
+    badge.style.background = '';
+    badge.style.borderColor = '';
+    badge.innerText = 'BUTTONS: READY (3)';
+  }, 1200);
+}
+
 function handlePhysicalSwitchEvent(switchName) {
   const now = Date.now();
   if (now - lastSwitchPressTime < 300) {
@@ -1527,6 +1550,7 @@ function handlePhysicalSwitchEvent(switchName) {
   lastSwitchPressTime = now;
 
   audio.beep(880, 0.05);
+  flashButtonPressBadge(switchName);
 
   const regScreen = document.getElementById('screen-register');
   if (regScreen && regScreen.style.display === 'block') {
