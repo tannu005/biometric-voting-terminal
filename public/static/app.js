@@ -109,6 +109,16 @@ const FALLBACK_VOTERS = {
     fingerprint_slot: 5,
     is_eligible: true,
     photo_url: "/voter_db/VOTE-IND-2026-668.jpg"
+  },
+  "VOTE-IND-668": {
+    epic: "VOTE-IND-668",
+    name: "NAVEEN",
+    constituency: "Central Tech Constituency - AC-07",
+    gender: "Male",
+    dob: "1996-05-12",
+    fingerprint_slot: 5,
+    is_eligible: true,
+    photo_url: "/voter_db/VOTE-IND-2026-668.jpg"
   }
 };
 

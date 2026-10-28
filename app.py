@@ -194,6 +194,16 @@ DEFAULT_VOTERS = [
         "fingerprint_slot": 5,
         "is_eligible": True,
         "photo": "VOTE-IND-2026-668.jpg"
+    },
+    {
+        "epic": "VOTE-IND-668",
+        "name": "NAVEEN",
+        "constituency": "Central Tech Constituency - AC-07",
+        "gender": "Male",
+        "dob": "1996-05-12",
+        "fingerprint_slot": 5,
+        "is_eligible": True,
+        "photo": "VOTE-IND-2026-668.jpg"
     }
 ]
 
