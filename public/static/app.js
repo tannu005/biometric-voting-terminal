@@ -1339,11 +1339,6 @@ async function checkSystemDiagnostic() {
   try {
     const resp = await fetch('/api/system/status');
     const data = await resp.json();
-    const as608Badge = document.getElementById('badge-as608-status');
-    if (as608Badge && data.hardware?.as608_fingerprint_scanner) {
-      const mode = data.hardware.as608_fingerprint_scanner.active_mode;
-      as608Badge.innerText = `R307S/AS608: ${mode}`;
-    }
   } catch (e) {
     console.warn("System diagnostic unreachable", e);
   }

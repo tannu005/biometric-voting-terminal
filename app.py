@@ -1341,6 +1341,16 @@ async def system_status():
     except Exception:
         pass
 
+    pi_data = query_pi_hardware("GET", "/health")
+    fp_online = False
+    fp_port = None
+    if pi_data and pi_data.get("fingerprint_ready"):
+        fp_online = True
+        fp_port = pi_data.get("fingerprint_port", "/dev/ttyUSB0")
+    elif as608_sensor.is_connected:
+        fp_online = True
+        fp_port = as608_sensor.port
+
     return {
         "status": "OPERATIONAL",
         "terminal_id": "KIOSK-TERMINAL-01",
@@ -1353,15 +1363,15 @@ async def system_status():
         },
         "hardware": {
             "as608_fingerprint_scanner": {
-                "active_mode": "PHYSICAL_UART" if as608_sensor.is_connected else "NOT_CONNECTED",
-                "port": as608_sensor.port,
-                "is_connected": as608_sensor.is_connected,
-                "handshake": as608_sensor.handshake()
+                "active_mode": f"READY ({fp_port})" if fp_online else "NOT_CONNECTED",
+                "port": fp_port,
+                "is_connected": fp_online,
+                "handshake": fp_online
             },
             "optical_camera": {
-                "is_opened": face_pipeline.cap is not None and face_pipeline.cap.isOpened(),
+                "is_opened": (pi_data and pi_data.get("camera_ready")) or (face_pipeline.cap is not None and face_pipeline.cap.isOpened()),
                 "device_index": face_pipeline.camera_index,
-                "cv_backend": "OpenCV"
+                "cv_backend": pi_data.get("camera_type", "OpenCV") if pi_data else "OpenCV"
             }
         },
         "crypto": {
