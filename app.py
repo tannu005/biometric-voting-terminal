@@ -670,7 +670,7 @@ if not os.environ.get("VERCEL"):
     if os.path.exists(VOTER_DB_DIR):
         app.mount("/voter_db", StaticFiles(directory=VOTER_DB_DIR), name="voter_db")
 
-DEFAULT_PI_URL = "https://courier-reexamine-underhand.ngrok-free.dev" if os.environ.get("VERCEL") else "http://192.168.50.2:8000"
+DEFAULT_PI_URL = "https://details-supplements-kiss-fascinating.trycloudflare.com" if os.environ.get("VERCEL") else "http://192.168.50.2:8000"
 PI_URL = os.environ.get("PI_URL", DEFAULT_PI_URL).rstrip("/")
 EVM_DEVICE_TOKEN = os.environ.get("EVM_DEVICE_TOKEN", "EVM-DEVICE-SECURE-LAN-TOKEN")
 PI_HEADERS = {
