@@ -1333,54 +1333,54 @@ function resetKioskForNextVoter() {
   setScreenState(1);
 }
 
-async function checkSystemDiagnostic() {
-  try {
-    const resp = await fetch('/api/system/status');
-    const data = await resp.json();
-  } catch (e) {
-    console.warn("System diagnostic unreachable", e);
-  }
+let consecutiveHealthFailures = 0;
 
+async function checkSystemDiagnostic() {
   try {
     const hwResp = await fetch('/api/hardware/health');
     const piBadge = document.getElementById('badge-pi-status');
     const as608Badge = document.getElementById('badge-as608-status');
     if (hwResp.ok) {
       const hwData = await hwResp.json();
-      if (piBadge) {
-        if (hwData.connected && hwData.pi?.status === 'READY') {
-          isPiOnline = true;
+      if (hwData.connected && hwData.pi?.status === 'READY') {
+        consecutiveHealthFailures = 0;
+        isPiOnline = true;
+        if (piBadge) {
           piBadge.innerText = "PI: ONLINE";
           piBadge.classList.add('success');
-          if (KioskState.currentStep === 3 && currentCameraSource !== 'pi' && !userSelectedCameraOverride) {
-            setCameraSource('pi');
+        }
+        if (as608Badge) {
+          if (hwData.pi.fingerprint_ready) {
+            as608Badge.innerText = `R307S: READY (${hwData.pi.fingerprint_port || '/dev/ttyUSB0'})`;
+            as608Badge.classList.add('success');
+          } else {
+            as608Badge.innerText = "R307S: OFFLINE";
+            as608Badge.classList.remove('success');
           }
-        } else {
-          isPiOnline = false;
-          piBadge.innerText = "PI: LOCAL MODE";
-          piBadge.classList.remove('success');
         }
-      }
-      if (as608Badge) {
-        if (hwData.connected && hwData.pi?.fingerprint_ready) {
-          as608Badge.innerText = `R307S: READY (${hwData.pi.fingerprint_port || 'UART'})`;
-          as608Badge.classList.add('success');
-        } else if (hwData.connected && hwData.pi) {
-          as608Badge.innerText = "R307S: OFFLINE";
-          as608Badge.classList.remove('success');
+        if (KioskState.currentStep === 3 && currentCameraSource !== 'pi' && !userSelectedCameraOverride) {
+          setCameraSource('pi');
         }
+        return;
       }
-    } else if (piBadge) {
+    }
+    consecutiveHealthFailures++;
+    if (consecutiveHealthFailures >= 2) {
       isPiOnline = false;
-      piBadge.innerText = "PI: LOCAL MODE";
-      piBadge.classList.remove('success');
+      if (piBadge) {
+        piBadge.innerText = "PI: LOCAL MODE";
+        piBadge.classList.remove('success');
+      }
     }
   } catch (e) {
-    isPiOnline = false;
-    const piBadge = document.getElementById('badge-pi-status');
-    if (piBadge) {
-      piBadge.innerText = "PI: LOCAL MODE";
-      piBadge.classList.remove('success');
+    consecutiveHealthFailures++;
+    if (consecutiveHealthFailures >= 2) {
+      isPiOnline = false;
+      const piBadge = document.getElementById('badge-pi-status');
+      if (piBadge) {
+        piBadge.innerText = "PI: LOCAL MODE";
+        piBadge.classList.remove('success');
+      }
     }
   }
 }
@@ -1465,6 +1465,10 @@ function handlePhysicalSwitchEvent(switchName) {
 function startHardwareEventPolling() {
   if (hardwarePollingInterval) clearInterval(hardwarePollingInterval);
   hardwarePollingInterval = setInterval(async () => {
+    // Only poll switches when on ballot candidate selection (Step 4)
+    if (currentTerminalMode !== 'kiosk' || KioskState.currentStep !== 4) {
+      return;
+    }
     try {
       const resp = await fetch('/api/hardware/events');
       if (!resp.ok) return;
@@ -1477,7 +1481,7 @@ function startHardwareEventPolling() {
         }
       }
     } catch (e) {}
-  }, 600);
+  }, 800);
 }
 
 window.addEventListener('DOMContentLoaded', () => {

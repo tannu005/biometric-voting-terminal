@@ -658,9 +658,10 @@ PI_HEADERS = {
     "ngrok-skip-browser-warning": "true",
     "User-Agent": "EVM-Kiosk-Agent"
 }
-PI_TIMEOUT = 4.0
+PI_TIMEOUT = 8.0
 
-
+_last_health_cache = None
+_last_health_time = 0.0
 
 def query_pi_hardware(method: str, path: str, timeout: Optional[float] = None, **kwargs) -> Optional[Dict[str, Any]]:
     to = timeout if timeout is not None else PI_TIMEOUT
@@ -676,6 +677,20 @@ def query_pi_hardware(method: str, path: str, timeout: Optional[float] = None, *
             return {"status": "ok", "text": resp.text}
     except Exception as exc:
         logger.warning(f"Pi query error on {path}: {exc}")
+    return None
+
+def get_cached_pi_health(max_age_sec: float = 2.5) -> Optional[Dict[str, Any]]:
+    global _last_health_cache, _last_health_time
+    now = time.time()
+    if _last_health_cache is not None and (now - _last_health_time < max_age_sec):
+        return _last_health_cache
+    data = query_pi_hardware("GET", "/health", timeout=6.0)
+    if data:
+        _last_health_cache = data
+        _last_health_time = now
+        return data
+    if _last_health_cache is not None and (now - _last_health_time < 10.0):
+        return _last_health_cache
     return None
 
 class VoterLookupRequest(BaseModel):
@@ -1000,7 +1015,7 @@ async def api_gateway_status():
 @app.get("/api/hardware/health")
 @app.get("/hardware/health")
 async def hardware_health():
-    pi_data = query_pi_hardware("GET", "/health")
+    pi_data = get_cached_pi_health()
     return {
         "connected": pi_data is not None,
         "pi_url": PI_URL,
@@ -1358,7 +1373,7 @@ async def system_status():
     except Exception:
         pass
 
-    pi_data = query_pi_hardware("GET", "/health")
+    pi_data = get_cached_pi_health()
     fp_online = False
     fp_port = None
     if pi_data and pi_data.get("fingerprint_ready"):
