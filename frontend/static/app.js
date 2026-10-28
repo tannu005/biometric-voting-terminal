@@ -247,6 +247,7 @@ function setScreenState(stepNumber) {
   } else if (stepNumber === 4) {
     stopAutomaticFaceTracker();
     stopPiCameraPreviewLoop();
+    startHardwareEventPolling();
     updatePiDisplay("1:Verma 2:Sunita\n3:Kabir - Press");
   } else if (stepNumber === 5) {
     stopAutomaticFaceTracker();
@@ -1611,23 +1612,12 @@ function handlePhysicalSwitchEvent(switchName) {
   }
 
   const currentScreen = KioskState.currentStep;
+  const ballotScreen = document.getElementById('screen-ballot');
+  const isBallotActive = ballotScreen && (ballotScreen.classList.contains('active') || ballotScreen.style.display === 'block');
 
-  if (currentScreen === 1) {
-    if (switchName === 'switch_1' || switchName === 'switch_2') {
-      const epics = ['VOTE-IND-2026-668', 'VOTE-IND-2026-001', 'VOTE-IND-2026-002', 'VOTE-IND-2026-003', 'VOTE-IND-2026-004'];
-      const current = document.getElementById('epic-input-field').value.trim();
-      let nextIdx = (epics.indexOf(current) + 1) % epics.length;
-      selectQuickEpic(epics[nextIdx]);
-    } else if (switchName === 'switch_3') {
-      submitEpic();
-    }
-  } else if (currentScreen === 2) {
-    triggerRpiR307SFingerprint();
-  } else if (currentScreen === 3) {
-    triggerPiCameraCaptureAndVerify();
-  } else if (currentScreen === 4) {
+  if (currentScreen === 4 || isBallotActive) {
     const modal = document.getElementById('vote-modal');
-    const isModalOpen = modal && modal.style.display === 'flex';
+    const isModalOpen = modal && (modal.style.display === 'flex' || modal.style.display === 'block');
 
     if (isModalOpen) {
       // ONLY physical switch confirms & casts the ballot!
@@ -1653,33 +1643,73 @@ function handlePhysicalSwitchEvent(switchName) {
       updateCandidateHighlight(cards);
       openVoteConfirmation(candidates[2].id, true);
     }
+  } else if (currentScreen === 1) {
+    if (switchName === 'switch_1' || switchName === 'switch_2') {
+      const epics = ['VOTE-IND-2026-668', 'VOTE-IND-2026-001', 'VOTE-IND-2026-002', 'VOTE-IND-2026-003', 'VOTE-IND-2026-004'];
+      const current = document.getElementById('epic-input-field').value.trim();
+      let nextIdx = (epics.indexOf(current) + 1) % epics.length;
+      selectQuickEpic(epics[nextIdx]);
+    } else if (switchName === 'switch_3') {
+      submitEpic();
+    }
+  } else if (currentScreen === 2) {
+    triggerRpiR307SFingerprint();
+  } else if (currentScreen === 3) {
+    triggerPiCameraCaptureAndVerify();
   } else if (currentScreen === 5) {
     resetKioskForNextVoter();
   }
 }
 
-function startHardwareEventPolling() {
-  if (hardwarePollingInterval) clearInterval(hardwarePollingInterval);
-  hardwarePollingInterval = setInterval(async () => {
-    if (isHardwarePollingBusy) return;
-    isHardwarePollingBusy = true;
-    try {
-      const resp = await fetch('/api/hardware/events');
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.events && Array.isArray(data.events) && data.events.length > 0) {
-          for (const ev of data.events) {
-            if (ev.type === 'switch_pressed' && ev.switch) {
-              handlePhysicalSwitchEvent(ev.switch);
-            }
+let isHardwarePollingActive = false;
+let isHardwareFetchInProgress = false;
+
+async function pollHardwareEventsLoop() {
+  if (!isHardwarePollingActive) return;
+  if (isHardwareFetchInProgress) {
+    setTimeout(pollHardwareEventsLoop, 150);
+    return;
+  }
+
+  isHardwareFetchInProgress = true;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const resp = await fetch(`/api/hardware/events?_t=${Date.now()}`, {
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.events && Array.isArray(data.events) && data.events.length > 0) {
+        console.log(`[EVM HW] Received ${data.events.length} hardware event(s):`, data.events);
+        for (const ev of data.events) {
+          if (ev.type === 'switch_pressed' && ev.switch) {
+            handlePhysicalSwitchEvent(ev.switch);
           }
         }
       }
-    } catch (e) {
-    } finally {
-      isHardwarePollingBusy = false;
     }
-  }, 350);
+  } catch (err) {
+    // Keep looping on fetch error/abort
+  } finally {
+    isHardwareFetchInProgress = false;
+  }
+
+  if (isHardwarePollingActive) {
+    setTimeout(pollHardwareEventsLoop, 150);
+  }
+}
+
+function startHardwareEventPolling() {
+  if (isHardwarePollingActive) return;
+  isHardwarePollingActive = true;
+  pollHardwareEventsLoop();
+}
+
+function initSensorTouchListeners() {
+  // Safe fallback stub
 }
 
 window.addEventListener('keydown', (e) => {
@@ -2483,3 +2513,6 @@ function proceedToVoteWithNewVoter() {
     }
   }
 }
+
+// Start polling for physical hardware buttons immediately
+startHardwareEventPolling();

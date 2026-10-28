@@ -1115,9 +1115,16 @@ async def hardware_display_reset():
 
 @app.get("/api/hardware/events")
 @app.get("/hardware/events")
-async def hardware_events():
-    data = query_pi_hardware("GET", "/events")
-    return data or {"events": []}
+def hardware_events():
+    data = query_pi_hardware("GET", "/events", timeout=3.5)
+    return JSONResponse(
+        content=data or {"events": []},
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 @app.post("/api/biometrics/face-detect")
 @app.post("/biometrics/face-detect")
