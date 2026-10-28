@@ -30,7 +30,9 @@ except Exception:
 
 agent_app = FastAPI(title='EVM Hardware Agent')
 events = queue.Queue()
-hardware_lock = threading.Lock()
+lcd_lock = threading.RLock()
+fingerprint_lock = threading.RLock()
+camera_lock = threading.RLock()
 
 lcd = None
 def init_lcd():
@@ -59,7 +61,7 @@ def show_message(message: str):
     if lcd is None:
         return
 
-    with hardware_lock:
+    with lcd_lock:
         try:
             lines = message.split('\n')
             l1 = lines[0][:16] if len(lines) > 0 else ''
@@ -236,11 +238,13 @@ camera_error = None
 try:
     from picamera2 import Picamera2
     camera = Picamera2()
-    camera.configure(camera.create_still_configuration())
+    # 640x480 resolution produces fast, bandwidth-friendly captures (~35KB) without choking ngrok tunnel
+    config = camera.create_preview_configuration(main={'size': (640, 480)})
+    camera.configure(config)
     camera.start()
     time.sleep(1)
     camera_type = 'picamera2'
-    print('Pi Camera (Picamera2) initialized.')
+    print('Pi Camera (Picamera2) initialized at 640x480.')
 except Exception as exc:
     try:
         import cv2
@@ -314,7 +318,7 @@ def health(_auth: bool = Depends(authorize)):
 
 @agent_app.api_route('/fingerprint/reconnect', methods=['GET', 'POST'])
 def reconnect_fingerprint(port: Optional[str] = None, baud: Optional[int] = None, _auth: bool = Depends(authorize)):
-    with hardware_lock:
+    with fingerprint_lock:
         res = init_fingerprint(forced_port=port, forced_baud=baud)
     return res
 
@@ -370,7 +374,7 @@ def safe_get_image(timeout_sec: float = 20.0) -> bool:
 def fingerprint_match(_auth: bool = Depends(authorize)):
     global finger
     if finger is None:
-        with hardware_lock:
+        with fingerprint_lock:
             init_fingerprint()
 
     if finger is None:
@@ -379,7 +383,7 @@ def fingerprint_match(_auth: bool = Depends(authorize)):
             detail=f'Fingerprint sensor unavailable: {finger_init_error}',
         )
 
-    with hardware_lock:
+    with fingerprint_lock:
         import adafruit_fingerprint
         show_message('Place your finger' + chr(10) + 'on sensor...')
 
@@ -416,7 +420,7 @@ def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(auth
     global finger
     slot = req.slot
     if finger is None:
-        with hardware_lock:
+        with fingerprint_lock:
             init_fingerprint()
 
     if finger is None:
@@ -427,7 +431,7 @@ def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(auth
             'message': f'R307S Fingerprint sensor is offline: {finger_init_error}'
         }
 
-    with hardware_lock:
+    with fingerprint_lock:
         import adafruit_fingerprint
 
         err_msgs = {
@@ -516,7 +520,7 @@ def capture_camera(_auth: bool = Depends(authorize)):
         raise HTTPException(status_code=503, detail=f'Camera unavailable: {camera_error}')
 
     try:
-        with hardware_lock:
+        with camera_lock:
             if camera_type == 'picamera2':
                 camera.capture_file(str(PHOTO_PATH))
             elif camera_type == 'opencv':
@@ -525,12 +529,12 @@ def capture_camera(_auth: bool = Depends(authorize)):
                 if not ret:
                     raise RuntimeError('Failed to read frame from OpenCV camera')
                 cv2.imwrite(str(PHOTO_PATH), frame)
-            
-            return FileResponse(
-                str(PHOTO_PATH),
-                media_type='image/jpeg',
-                filename='voter_capture.jpg',
-            )
+        
+        return FileResponse(
+            str(PHOTO_PATH),
+            media_type='image/jpeg',
+            filename='voter_capture.jpg',
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f'Camera capture failed: {exc}')
 

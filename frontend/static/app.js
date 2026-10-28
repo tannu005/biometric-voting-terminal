@@ -424,9 +424,8 @@ function startPiCameraPreviewLoop() {
 async function pollPiCameraFrame() {
   if (!isPiPreviewRunning) return;
 
-  const isStep3 = (KioskState.currentStep === 3 && currentCameraSource === 'pi');
-  const regScreen = document.getElementById('screen-register');
-  const isReg = (regScreen && regScreen.style.display === 'block' && regCameraSource === 'pi' && !regCapturedPhotoBase64);
+  const isStep3 = (currentTerminalMode === 'kiosk' && KioskState.currentStep === 3 && currentCameraSource === 'pi');
+  const isReg = (currentTerminalMode === 'register' && regCameraSource === 'pi' && !regCapturedPhotoBase64);
 
   if (!isStep3 && !isReg) {
     piPreviewLoopTimeout = setTimeout(pollPiCameraFrame, 1000);
@@ -460,14 +459,13 @@ async function pollPiCameraFrame() {
   }
 
   if (isPiPreviewRunning) {
-    piPreviewLoopTimeout = setTimeout(pollPiCameraFrame, 600);
+    piPreviewLoopTimeout = setTimeout(pollPiCameraFrame, 750);
   }
 }
 
 function updatePiCameraPreview(imageData, detection) {
-  const isStep3 = (KioskState.currentStep === 3 && currentCameraSource === 'pi');
-  const regScreen = document.getElementById('screen-register');
-  const isReg = (regScreen && regScreen.style.display === 'block' && regCameraSource === 'pi' && !regCapturedPhotoBase64);
+  const isStep3 = (currentTerminalMode === 'kiosk' && KioskState.currentStep === 3 && currentCameraSource === 'pi');
+  const isReg = (currentTerminalMode === 'register' && regCameraSource === 'pi' && !regCapturedPhotoBase64);
 
   if (isStep3) {
     const imgEl = document.getElementById('server-mjpeg-stream');
