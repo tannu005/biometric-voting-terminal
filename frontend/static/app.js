@@ -99,8 +99,44 @@ const FALLBACK_VOTERS = {
     fingerprint_slot: 4,
     is_eligible: true,
     photo_url: "/voter_db/VOTE-IND-2026-004.jpg"
+  },
+  "VOTE-IND-2026-668": {
+    epic: "VOTE-IND-2026-668",
+    name: "NAVEEN",
+    constituency: "Central Tech Constituency - AC-07",
+    gender: "Male",
+    dob: "1996-05-12",
+    fingerprint_slot: 5,
+    is_eligible: true,
+    photo_url: "/voter_db/VOTE-IND-2026-668.jpg"
   }
 };
+
+function getRegisteredVoters() {
+  try {
+    return JSON.parse(localStorage.getItem('EVM_REGISTERED_VOTERS') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveRegisteredVoter(voter) {
+  if (!voter || !voter.epic) return;
+  try {
+    const epic = voter.epic.toUpperCase();
+    const voters = getRegisteredVoters();
+    voters[epic] = voter;
+    localStorage.setItem('EVM_REGISTERED_VOTERS', JSON.stringify(voters));
+    FALLBACK_VOTERS[epic] = voter;
+  } catch (e) {}
+}
+
+try {
+  const _stored = getRegisteredVoters();
+  Object.keys(_stored).forEach(k => {
+    FALLBACK_VOTERS[k] = _stored[k];
+  });
+} catch (e) {}
 
 const FALLBACK_CANDIDATES = [
   {
@@ -279,62 +315,71 @@ async function submitEpicLookup() {
   submitBtn.disabled = true;
   submitBtn.innerText = "Verifying Registry...";
 
+  const storedVoters = getRegisteredVoters();
+  const localVoter = storedVoters[epic] || FALLBACK_VOTERS[epic] || (newlyRegisteredVoter && newlyRegisteredVoter.epic === epic ? newlyRegisteredVoter : null);
+
   try {
     const resp = await fetch('/api/voter/lookup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ epic: epic })
+      body: JSON.stringify({
+        epic: epic,
+        client_voter: localVoter || undefined
+      })
     });
 
     if (resp.ok) {
       const data = await resp.json();
       audio.successChord();
       KioskState.activeEpic = epic;
-      KioskState.voterData = data.voter;
+      KioskState.voterData = { ...(localVoter || {}), ...data.voter };
       KioskState.isOfflineFallback = false;
 
-      document.getElementById('hud-voter-name').innerText = data.voter.name;
-      document.getElementById('hud-voter-epic').innerText = data.voter.epic;
-      document.getElementById('hud-voter-constituency').innerText = data.voter.constituency;
-      document.getElementById('hud-voter-photo').src = data.voter.photo_url;
+      document.getElementById('hud-voter-name').innerText = KioskState.voterData.name;
+      document.getElementById('hud-voter-epic').innerText = KioskState.voterData.epic;
+      document.getElementById('hud-voter-constituency').innerText = KioskState.voterData.constituency;
+      document.getElementById('hud-voter-photo').src = KioskState.voterData.photo_url || (localVoter && localVoter.photo_url) || `/voter_db/${epic}.jpg`;
 
       setScreenState(2);
       return;
     } else {
-      const data = await resp.json().catch(() => ({}));
-      if (resp.status >= 500 || !data.detail?.error) {
-        const fallbackVoter = FALLBACK_VOTERS[epic];
-        if (fallbackVoter) {
-          audio.successChord();
-          KioskState.activeEpic = epic;
-          KioskState.voterData = fallbackVoter;
-          KioskState.isOfflineFallback = true;
+      if (localVoter) {
+        audio.successChord();
+        KioskState.activeEpic = epic;
+        KioskState.voterData = localVoter;
+        KioskState.isOfflineFallback = true;
 
-          document.getElementById('hud-voter-name').innerText = fallbackVoter.name;
-          document.getElementById('hud-voter-epic').innerText = fallbackVoter.epic;
-          document.getElementById('hud-voter-constituency').innerText = fallbackVoter.constituency;
-          document.getElementById('hud-voter-photo').src = fallbackVoter.photo_url;
+        document.getElementById('hud-voter-name').innerText = localVoter.name;
+        document.getElementById('hud-voter-epic').innerText = localVoter.epic;
+        document.getElementById('hud-voter-constituency').innerText = localVoter.constituency;
+        document.getElementById('hud-voter-photo').src = localVoter.photo_url || `/voter_db/${epic}.jpg`;
 
-          setScreenState(2);
-          return;
-        }
+        fetch('/api/voter/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(localVoter)
+        }).catch(() => {});
+
+        setScreenState(2);
+        return;
       }
+
+      const data = await resp.json().catch(() => ({}));
       audio.errorTone();
       showEpicError(data.detail?.message || `EPIC '${epic}' not found in constituency roll.`);
       return;
     }
   } catch (err) {
-    const fallbackVoter = FALLBACK_VOTERS[epic];
-    if (fallbackVoter) {
+    if (localVoter) {
       audio.successChord();
       KioskState.activeEpic = epic;
-      KioskState.voterData = fallbackVoter;
+      KioskState.voterData = localVoter;
       KioskState.isOfflineFallback = true;
 
-      document.getElementById('hud-voter-name').innerText = fallbackVoter.name;
-      document.getElementById('hud-voter-epic').innerText = fallbackVoter.epic;
-      document.getElementById('hud-voter-constituency').innerText = fallbackVoter.constituency;
-      document.getElementById('hud-voter-photo').src = fallbackVoter.photo_url;
+      document.getElementById('hud-voter-name').innerText = localVoter.name;
+      document.getElementById('hud-voter-epic').innerText = localVoter.epic;
+      document.getElementById('hud-voter-constituency').innerText = localVoter.constituency;
+      document.getElementById('hud-voter-photo').src = localVoter.photo_url || `/voter_db/${epic}.jpg`;
 
       setScreenState(2);
       return;
@@ -822,7 +867,8 @@ async function executeFaceVerification(imageData) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         epic: KioskState.activeEpic,
-        image_data: imageData
+        image_data: imageData,
+        ref_photo_base64: KioskState.voterData ? KioskState.voterData.photo_base64 : undefined
       })
     });
 
@@ -975,6 +1021,7 @@ async function triggerLaptopPhysicalFingerprint() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           epic: KioskState.activeEpic,
+          expected_slot: KioskState.voterData ? KioskState.voterData.fingerprint_slot : undefined,
           method: "LAPTOP_HARDWARE_FINGERPRINT",
           credential: {
             id: credential.id,
@@ -1032,6 +1079,7 @@ async function triggerRpiR307SFingerprint() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         epic: KioskState.activeEpic,
+        expected_slot: KioskState.voterData ? KioskState.voterData.fingerprint_slot : undefined,
         method: "RPI_R307S_SENSOR",
         timeout_sec: 12.0
       })
@@ -1098,6 +1146,7 @@ async function triggerAS608SensorScan() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         epic: KioskState.activeEpic,
+        expected_slot: KioskState.voterData ? KioskState.voterData.fingerprint_slot : undefined,
         method: "AS608_OPTICAL_UART",
         timeout_sec: 5.0,
         touch_detected: true
@@ -1142,7 +1191,10 @@ async function unlockBallot() {
     const resp = await fetch('/api/ballot/authorize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ epic: KioskState.activeEpic })
+      body: JSON.stringify({
+        epic: KioskState.activeEpic,
+        client_validated: true
+      })
     });
 
     if (resp.ok) {
@@ -2164,8 +2216,7 @@ async function submitVoterRegistration() {
 
     if (resp.ok && data.success) {
       audio.ballotChime();
-      newlyRegisteredVoter = data.voter;
-      FALLBACK_VOTERS[data.voter.epic] = {
+      const voterRecord = {
         epic: data.voter.epic,
         name: data.voter.name,
         constituency: data.voter.constituency,
@@ -2174,8 +2225,11 @@ async function submitVoterRegistration() {
         fingerprint_slot: data.voter.fingerprint_slot,
         fingerprint_method: data.voter.fingerprint_method,
         credential_id: data.voter.credential_id,
+        photo_base64: regCapturedPhotoBase64,
         photo_url: regCapturedPhotoBase64 || `/voter_db/${data.voter.photo || data.voter.epic + '.jpg'}`
       };
+      newlyRegisteredVoter = voterRecord;
+      saveRegisteredVoter(voterRecord);
 
       document.getElementById('modal-success-epic').innerText = data.voter.epic;
       document.getElementById('modal-success-name').innerText = data.voter.name;
@@ -2217,11 +2271,17 @@ function closeRegistrationModal() {
 }
 
 function proceedToVoteWithNewVoter() {
-  const epic = newlyRegisteredVoter ? newlyRegisteredVoter.epic : '';
+  const curVoter = newlyRegisteredVoter;
+  const epic = curVoter ? curVoter.epic : '';
   closeRegistrationModal();
   switchTerminalMode('kiosk');
 
   if (epic) {
+    if (curVoter) {
+      newlyRegisteredVoter = curVoter;
+      KioskState.voterData = curVoter;
+      KioskState.activeEpic = epic;
+    }
     const epicField = document.getElementById('epic-input-field');
     if (epicField) {
       epicField.value = epic;
