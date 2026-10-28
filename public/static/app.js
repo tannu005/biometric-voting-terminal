@@ -247,7 +247,9 @@ function setScreenState(stepNumber) {
   } else if (stepNumber === 4) {
     stopAutomaticFaceTracker();
     stopPiCameraPreviewLoop();
-    updatePiDisplay("Select Candidate\nPress Switch");
+    lastProcessedHardwareTimestamp = Date.now() / 1000;
+    flushHardwareEvents();
+    updatePiDisplay("1:Verma 2:Sunita\n3:Kabir - Press");
   } else if (stepNumber === 5) {
     stopAutomaticFaceTracker();
     stopPiCameraPreviewLoop();
@@ -1231,45 +1233,77 @@ function renderCandidates(candidates) {
   container.innerHTML = '';
 
   highlightedCandidateIndex = 0;
+  const list = (candidates && candidates.length > 0) ? candidates : FALLBACK_CANDIDATES;
+  KioskState.candidates = list;
 
-  candidates.forEach((cand, idx) => {
+  list.forEach((cand, idx) => {
     const card = document.createElement('div');
     card.className = idx === 0 ? 'candidate-card keyboard-highlighted' : 'candidate-card';
+    card.id = `candidate-card-${idx}`;
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.style.cursor = 'pointer';
+
     const contractNum = cand.contract_id !== undefined ? cand.contract_id : idx;
+    const buttonNum = idx + 1;
+
     card.innerHTML = `
-      <div style="display: flex; align-items: center;">
-        <div class="cand-symbol-box">${cand.symbol}</div>
+      <div style="display: flex; align-items: center; gap: 16px; flex: 1;">
+        <div class="cand-symbol-box" style="font-size: 38px;">${cand.symbol}</div>
         <div class="cand-info">
-          <div style="font-size: 0.72rem; color: #38bdf8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Candidate #${contractNum} (Contract Slot)</div>
-          <h3>${cand.name}</h3>
-          <p>${cand.party}</p>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span style="background: rgba(56, 189, 248, 0.18); border: 1px solid rgba(56, 189, 248, 0.45); color: #38bdf8; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+              EVM BUTTON ${buttonNum} / SWITCH ${buttonNum}
+            </span>
+            <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">Slot #${contractNum}</span>
+          </div>
+          <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #ffffff;">${cand.name}</h3>
+          <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: #94a3b8;">${cand.party}</p>
         </div>
       </div>
-      <button class="vote-press-btn" onclick="openVoteConfirmation('${cand.id}')">VOTE [TOUCH]</button>
+      <button class="vote-press-btn" type="button" style="pointer-events: auto;" onclick="event.stopPropagation(); openVoteConfirmation('${cand.id}')">
+        VOTE [BTN ${buttonNum}]
+      </button>
     `;
+
+    card.onclick = (e) => {
+      e.stopPropagation();
+      openVoteConfirmation(cand.id);
+    };
+
     container.appendChild(card);
   });
 }
 
 function openVoteConfirmation(candidateId) {
   audio.beep(800, 0.08);
-  const cand = KioskState.candidates.find(c => c.id === candidateId);
+  const candidates = (KioskState.candidates && KioskState.candidates.length > 0) ? KioskState.candidates : FALLBACK_CANDIDATES;
+  const cand = candidates.find(c => c.id === candidateId) || candidates[0];
   if (!cand) return;
 
   KioskState.selectedCandidate = cand;
 
-  document.getElementById('modal-cand-symbol').innerText = cand.symbol;
-  document.getElementById('modal-cand-name').innerText = cand.name;
-  document.getElementById('modal-cand-party').innerText = cand.party;
+  const symbolEl = document.getElementById('modal-cand-symbol');
+  const nameEl = document.getElementById('modal-cand-name');
+  const partyEl = document.getElementById('modal-cand-party');
+
+  if (symbolEl) symbolEl.innerText = cand.symbol;
+  if (nameEl) nameEl.innerText = cand.name;
+  if (partyEl) partyEl.innerText = cand.party;
 
   const modal = document.getElementById('vote-modal');
   if (modal) modal.style.display = 'flex';
+
+  updatePiDisplay(`${cand.name.slice(0, 16)}\nConfirm: Press Btn`);
 }
 
 function closeVoteConfirmation() {
   audio.beep(400, 0.05);
   const modal = document.getElementById('vote-modal');
   if (modal) modal.style.display = 'none';
+  if (KioskState.currentStep === 4) {
+    updatePiDisplay("1:Verma 2:Sunita\n3:Kabir - Press");
+  }
 }
 
 async function executeCastVote() {
@@ -1279,6 +1313,8 @@ async function executeCastVote() {
     confirmBtn.disabled = true;
     confirmBtn.innerText = "Signing & Casting...";
   }
+
+  updatePiDisplay("Recording Vote...\nPlease wait...");
 
   try {
     const resp = await fetch('/api/ballot/cast', {
@@ -1296,6 +1332,7 @@ async function executeCastVote() {
       closeVoteConfirmation();
       showConfirmationReceipt(data.receipt);
       setScreenState(5);
+      updatePiDisplay("VOTE RECORDED!\nThank you!");
       return;
     }
     throw new Error('Cast fallback');
@@ -1319,6 +1356,7 @@ async function executeCastVote() {
     };
     showConfirmationReceipt(receipt);
     setScreenState(5);
+    updatePiDisplay("VOTE RECORDED!\nThank you!");
   } finally {
     if (confirmBtn) {
       confirmBtn.disabled = false;
@@ -1449,8 +1487,12 @@ async function checkSystemDiagnostic() {
 
 let highlightedCandidateIndex = 0;
 let hardwarePollingInterval = null;
+let lastProcessedHardwareTimestamp = 0;
+let isHardwarePollingBusy = false;
+let lastSwitchPressTime = 0;
 
 function updateCandidateHighlight(cards) {
+  if (!cards || cards.length === 0) return;
   cards.forEach((c, idx) => {
     if (idx === highlightedCandidateIndex) {
       c.classList.add('keyboard-highlighted');
@@ -1461,13 +1503,39 @@ function updateCandidateHighlight(cards) {
   });
 }
 
+async function flushHardwareEvents() {
+  try {
+    const resp = await fetch('/api/hardware/events');
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.events && Array.isArray(data.events)) {
+        for (const ev of data.events) {
+          if (ev.timestamp && ev.timestamp > lastProcessedHardwareTimestamp) {
+            lastProcessedHardwareTimestamp = ev.timestamp;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 function handlePhysicalSwitchEvent(switchName) {
+  const now = Date.now();
+  if (now - lastSwitchPressTime < 300) {
+    return; // Hardware switch debounce
+  }
+  lastSwitchPressTime = now;
+
   audio.beep(880, 0.05);
 
   const regScreen = document.getElementById('screen-register');
   if (regScreen && regScreen.style.display === 'block') {
-    if (switchName === 'switch_3') {
+    if (switchName === 'switch_1') {
       captureRegistrationPiCamera();
+    } else if (switchName === 'switch_2') {
+      enrollRegistrationFingerprint();
+    } else if (switchName === 'switch_3') {
+      submitVoterRegistration();
     }
     return;
   }
@@ -1475,8 +1543,8 @@ function handlePhysicalSwitchEvent(switchName) {
   const currentScreen = KioskState.currentStep;
 
   if (currentScreen === 1) {
-    if (switchName === 'switch_2') {
-      const epics = ['VOTE-IND-2026-001', 'VOTE-IND-2026-002', 'VOTE-IND-2026-003', 'VOTE-IND-2026-004'];
+    if (switchName === 'switch_1' || switchName === 'switch_2') {
+      const epics = ['VOTE-IND-2026-668', 'VOTE-IND-2026-001', 'VOTE-IND-2026-002', 'VOTE-IND-2026-003', 'VOTE-IND-2026-004'];
       const current = document.getElementById('epic-input-field').value.trim();
       let nextIdx = (epics.indexOf(current) + 1) % epics.length;
       selectQuickEpic(epics[nextIdx]);
@@ -1484,67 +1552,132 @@ function handlePhysicalSwitchEvent(switchName) {
       submitEpic();
     }
   } else if (currentScreen === 2) {
-    if (switchName === 'switch_3') {
-      triggerRpiR307SFingerprint();
-    }
+    triggerRpiR307SFingerprint();
   } else if (currentScreen === 3) {
-    if (switchName === 'switch_3') {
-      triggerPiCameraCaptureAndVerify();
-    }
+    triggerPiCameraCaptureAndVerify();
   } else if (currentScreen === 4) {
     const modal = document.getElementById('vote-modal');
     const isModalOpen = modal && modal.style.display === 'flex';
 
     if (isModalOpen) {
-      if (switchName === 'switch_1') {
-        closeVoteConfirmation();
-      } else if (switchName === 'switch_3') {
-        executeCastVote();
-      }
-    } else {
-      const cards = document.querySelectorAll('.candidate-card');
-      if (!cards || cards.length === 0) return;
+      // If modal is open, ANY physical switch confirms & casts the ballot!
+      executeCastVote();
+      return;
+    }
 
-      if (switchName === 'switch_1') {
-        highlightedCandidateIndex = (highlightedCandidateIndex - 1 + cards.length) % cards.length;
-        updateCandidateHighlight(cards);
-      } else if (switchName === 'switch_2') {
-        highlightedCandidateIndex = (highlightedCandidateIndex + 1) % cards.length;
-        updateCandidateHighlight(cards);
-      } else if (switchName === 'switch_3') {
-        if (KioskState.candidates && KioskState.candidates[highlightedCandidateIndex]) {
-          openVoteConfirmation(KioskState.candidates[highlightedCandidateIndex].id);
-        }
-      }
+    const candidates = (KioskState.candidates && KioskState.candidates.length > 0) ? KioskState.candidates : FALLBACK_CANDIDATES;
+    if (!candidates || candidates.length === 0) return;
+
+    const cards = document.querySelectorAll('.candidate-card');
+
+    if (switchName === 'switch_1' && candidates[0]) {
+      highlightedCandidateIndex = 0;
+      updateCandidateHighlight(cards);
+      openVoteConfirmation(candidates[0].id);
+    } else if (switchName === 'switch_2' && candidates[1]) {
+      highlightedCandidateIndex = 1;
+      updateCandidateHighlight(cards);
+      openVoteConfirmation(candidates[1].id);
+    } else if (switchName === 'switch_3' && candidates[2]) {
+      highlightedCandidateIndex = 2;
+      updateCandidateHighlight(cards);
+      openVoteConfirmation(candidates[2].id);
     }
   } else if (currentScreen === 5) {
-    if (switchName === 'switch_3') {
-      resetKioskForNextVoter();
-    }
+    resetKioskForNextVoter();
   }
 }
 
 function startHardwareEventPolling() {
   if (hardwarePollingInterval) clearInterval(hardwarePollingInterval);
   hardwarePollingInterval = setInterval(async () => {
-    // Only poll switches when on ballot candidate selection (Step 4)
-    if (currentTerminalMode !== 'kiosk' || KioskState.currentStep !== 4) {
-      return;
-    }
+    if (isHardwarePollingBusy) return;
+    isHardwarePollingBusy = true;
     try {
       const resp = await fetch('/api/hardware/events');
-      if (!resp.ok) return;
-      const data = await resp.json();
-      if (data.events && Array.isArray(data.events)) {
-        for (const ev of data.events) {
-          if (ev.type === 'switch_pressed' && ev.switch) {
-            handlePhysicalSwitchEvent(ev.switch);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.events && Array.isArray(data.events)) {
+          for (const ev of data.events) {
+            if (ev.type === 'switch_pressed' && ev.switch) {
+              if (ev.timestamp && ev.timestamp <= lastProcessedHardwareTimestamp) {
+                continue; // Skip stale or already-processed event
+              }
+              if (ev.timestamp) {
+                lastProcessedHardwareTimestamp = ev.timestamp;
+              }
+              handlePhysicalSwitchEvent(ev.switch);
+            }
           }
         }
       }
-    } catch (e) {}
-  }, 800);
+    } catch (e) {
+    } finally {
+      isHardwarePollingBusy = false;
+    }
+  }, 400);
 }
+
+window.addEventListener('keydown', (e) => {
+  const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+  if (activeTag === 'input' || activeTag === 'textarea') {
+    if (e.key === 'Enter' && document.activeElement.id === 'epic-input-field') {
+      e.preventDefault();
+      submitEpic();
+    }
+    return;
+  }
+
+  const currentScreen = KioskState.currentStep;
+
+  if (currentScreen === 4) {
+    const modal = document.getElementById('vote-modal');
+    const isModalOpen = modal && modal.style.display === 'flex';
+
+    if (isModalOpen) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === '1' || e.key === '2' || e.key === '3') {
+        e.preventDefault();
+        executeCastVote();
+      } else if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        closeVoteConfirmation();
+      }
+      return;
+    }
+
+    const candidates = (KioskState.candidates && KioskState.candidates.length > 0) ? KioskState.candidates : FALLBACK_CANDIDATES;
+    if ((e.key === '1' || e.code === 'Numpad1') && candidates[0]) {
+      e.preventDefault();
+      openVoteConfirmation(candidates[0].id);
+    } else if ((e.key === '2' || e.code === 'Numpad2') && candidates[1]) {
+      e.preventDefault();
+      openVoteConfirmation(candidates[1].id);
+    } else if ((e.key === '3' || e.code === 'Numpad3') && candidates[2]) {
+      e.preventDefault();
+      openVoteConfirmation(candidates[2].id);
+    }
+  } else if (currentScreen === 1) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitEpic();
+    }
+  } else if (currentScreen === 2) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      triggerRpiR307SFingerprint();
+    }
+  } else if (currentScreen === 3) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      triggerPiCameraCaptureAndVerify();
+    }
+  } else if (currentScreen === 5) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      resetKioskForNextVoter();
+    }
+  }
+});
 
 window.addEventListener('DOMContentLoaded', () => {
   setScreenState(1);
