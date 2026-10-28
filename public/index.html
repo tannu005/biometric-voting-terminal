@@ -240,13 +240,20 @@
         <p class="screen-desc">Select your candidate</p>
       </div>
 
-      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 10px; padding: 12px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 0.88rem; color: #cbd5e1;">
-        <div>
-          <span style="color: #38bdf8; font-weight: 700;">🗳️ EVM Hardware Controls:</span>
-          Press <strong>Button 1</strong>, <strong>Button 2</strong>, or <strong>Button 3</strong> to vote.
+      <div style="background: rgba(15, 23, 42, 0.85); border: 2px solid #38bdf8; border-radius: 12px; padding: 14px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 1.8rem;">🔒</span>
+          <div>
+            <div style="color: #38bdf8; font-weight: 800; font-size: 0.98rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Physical Button Voting Enforced
+            </div>
+            <div style="color: #cbd5e1; font-size: 0.86rem; margin-top: 2px;">
+              Laptop screen & touch voting is <strong>DISABLED</strong>. You must press <strong>Physical Button 1, 2, or 3</strong> on the EVM hardware unit.
+            </div>
+          </div>
         </div>
-        <div style="font-size: 0.75rem; color: #94a3b8;">
-          (Touch / Click or Keys 1, 2, 3 also active)
+        <div class="badge success pulse" style="font-size: 0.76rem; white-space: nowrap;">
+          HARDWARE LOCKED
         </div>
       </div>
 
@@ -493,8 +500,8 @@
         <button style="background: #334155; border: none; color: #fff; padding: 14px 24px; border-radius: 10px; font-weight: 600; cursor: pointer;" onclick="closeVoteConfirmation()">
           Cancel (Esc)
         </button>
-        <button class="btn-primary" id="btn-confirm-vote" style="background: linear-gradient(135deg, #059669, #047857); padding: 14px 28px; font-size: 1rem;" onclick="executeCastVote()">
-          CONFIRM VOTE [Press Any Button]
+        <button class="btn-primary" id="btn-confirm-vote" style="background: #1e293b; border: 2px solid #10b981; color: #34d399; padding: 14px 28px; font-size: 0.95rem; font-weight: 800; cursor: not-allowed; box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);" onclick="showToast('🔒 Screen voting disabled! Press physical EVM button on unit.'); audio.beep(300, 0.1);">
+          🔘 PRESS PHYSICAL EVM BUTTON TO CAST
         </button>
       </div>
     </div>

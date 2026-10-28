@@ -1238,9 +1238,8 @@ function renderCandidates(candidates) {
     const card = document.createElement('div');
     card.className = idx === 0 ? 'candidate-card keyboard-highlighted' : 'candidate-card';
     card.id = `candidate-card-${idx}`;
-    card.setAttribute('role', 'button');
-    card.setAttribute('tabindex', '0');
-    card.style.cursor = 'pointer';
+    card.style.cursor = 'default';
+    card.style.userSelect = 'none';
 
     const contractNum = cand.contract_id !== undefined ? cand.contract_id : idx;
     const buttonNum = idx + 1;
@@ -1251,7 +1250,7 @@ function renderCandidates(candidates) {
         <div class="cand-info">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
             <span style="background: rgba(56, 189, 248, 0.18); border: 1px solid rgba(56, 189, 248, 0.45); color: #38bdf8; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-              EVM BUTTON ${buttonNum} / SWITCH ${buttonNum}
+              EVM BUTTON ${buttonNum}
             </span>
             <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">Slot #${contractNum}</span>
           </div>
@@ -1259,21 +1258,29 @@ function renderCandidates(candidates) {
           <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: #94a3b8;">${cand.party}</p>
         </div>
       </div>
-      <button class="vote-press-btn" type="button" style="pointer-events: auto;" onclick="event.stopPropagation(); openVoteConfirmation('${cand.id}')">
-        VOTE [BTN ${buttonNum}]
-      </button>
+      <div style="background: rgba(15, 23, 42, 0.9); border: 2px solid #38bdf8; border-radius: 10px; padding: 10px 18px; color: #38bdf8; font-weight: 800; font-size: 0.84rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);">
+        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
+        PRESS BUTTON ${buttonNum} ON PI
+      </div>
     `;
 
     card.onclick = (e) => {
       e.stopPropagation();
-      openVoteConfirmation(cand.id);
+      audio.beep(300, 0.1);
+      showToast(`🔒 Screen Voting Disabled! Press Physical Button ${buttonNum} on the EVM Unit.`);
     };
 
     container.appendChild(card);
   });
 }
 
-function openVoteConfirmation(candidateId) {
+function openVoteConfirmation(candidateId, isPhysicalHardware = false) {
+  if (!isPhysicalHardware) {
+    audio.beep(300, 0.1);
+    showToast("🔒 Screen voting disabled! You must press the physical button on the EVM unit.");
+    return;
+  }
+
   audio.beep(800, 0.08);
   const candidates = (KioskState.candidates && KioskState.candidates.length > 0) ? KioskState.candidates : FALLBACK_CANDIDATES;
   const cand = candidates.find(c => c.id === candidateId) || candidates[0];
@@ -1304,7 +1311,13 @@ function closeVoteConfirmation() {
   }
 }
 
-async function executeCastVote() {
+async function executeCastVote(isPhysicalHardware = false) {
+  if (!isPhysicalHardware) {
+    audio.beep(300, 0.1);
+    showToast("🔒 Screen voting disabled! Press physical EVM button on unit to cast.");
+    return;
+  }
+
   audio.ballotChime();
   const confirmBtn = document.getElementById('btn-confirm-vote');
   if (confirmBtn) {
@@ -1617,8 +1630,8 @@ function handlePhysicalSwitchEvent(switchName) {
     const isModalOpen = modal && modal.style.display === 'flex';
 
     if (isModalOpen) {
-      // If modal is open, ANY physical switch confirms & casts the ballot!
-      executeCastVote();
+      // ONLY physical switch confirms & casts the ballot!
+      executeCastVote(true);
       return;
     }
 
@@ -1630,15 +1643,15 @@ function handlePhysicalSwitchEvent(switchName) {
     if (switchName === 'switch_1' && candidates[0]) {
       highlightedCandidateIndex = 0;
       updateCandidateHighlight(cards);
-      openVoteConfirmation(candidates[0].id);
+      openVoteConfirmation(candidates[0].id, true);
     } else if (switchName === 'switch_2' && candidates[1]) {
       highlightedCandidateIndex = 1;
       updateCandidateHighlight(cards);
-      openVoteConfirmation(candidates[1].id);
+      openVoteConfirmation(candidates[1].id, true);
     } else if (switchName === 'switch_3' && candidates[2]) {
       highlightedCandidateIndex = 2;
       updateCandidateHighlight(cards);
-      openVoteConfirmation(candidates[2].id);
+      openVoteConfirmation(candidates[2].id, true);
     }
   } else if (currentScreen === 5) {
     resetKioskForNextVoter();
@@ -1682,31 +1695,18 @@ window.addEventListener('keydown', (e) => {
   const currentScreen = KioskState.currentStep;
 
   if (currentScreen === 4) {
-    const modal = document.getElementById('vote-modal');
-    const isModalOpen = modal && modal.style.display === 'flex';
-
-    if (isModalOpen) {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === '1' || e.key === '2' || e.key === '3') {
-        e.preventDefault();
-        executeCastVote();
-      } else if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') {
-        e.preventDefault();
-        closeVoteConfirmation();
-      }
+    if (e.key === '1' || e.key === '2' || e.key === '3' || e.code === 'Numpad1' || e.code === 'Numpad2' || e.code === 'Numpad3' || e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      audio.beep(300, 0.1);
+      showToast("🔒 Laptop keyboard disabled! Use physical EVM unit buttons only.");
       return;
     }
-
-    const candidates = (KioskState.candidates && KioskState.candidates.length > 0) ? KioskState.candidates : FALLBACK_CANDIDATES;
-    if ((e.key === '1' || e.code === 'Numpad1') && candidates[0]) {
+    if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') {
       e.preventDefault();
-      openVoteConfirmation(candidates[0].id);
-    } else if ((e.key === '2' || e.code === 'Numpad2') && candidates[1]) {
-      e.preventDefault();
-      openVoteConfirmation(candidates[1].id);
-    } else if ((e.key === '3' || e.code === 'Numpad3') && candidates[2]) {
-      e.preventDefault();
-      openVoteConfirmation(candidates[2].id);
+      closeVoteConfirmation();
+      return;
     }
+    return;
   } else if (currentScreen === 1) {
     if (e.key === 'Enter') {
       e.preventDefault();
