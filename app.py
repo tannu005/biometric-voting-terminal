@@ -666,10 +666,16 @@ def query_pi_hardware(method: str, path: str, timeout: Optional[float] = None, *
     to = timeout if timeout is not None else PI_TIMEOUT
     try:
         resp = requests.request(method, f"{PI_URL}{path}", headers=PI_HEADERS, timeout=to, **kwargs)
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
         if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
+            return {"status": "ok", "text": resp.text}
+    except Exception as exc:
+        logger.warning(f"Pi query error on {path}: {exc}")
     return None
 
 class VoterLookupRequest(BaseModel):

@@ -84,6 +84,67 @@ finger_init_error = None
 connected_port = None
 connected_baud = None
 
+def patch_adafruit_fingerprint(sensor_obj):
+    import struct
+    original_send = sensor_obj._send_packet
+
+    def robust_send_packet(data):
+        uart = getattr(sensor_obj, '_uart', getattr(sensor_obj, 'uart', None))
+        if uart and hasattr(uart, 'reset_input_buffer'):
+            try:
+                uart.reset_input_buffer()
+            except Exception:
+                pass
+        return original_send(data)
+
+    def robust_get_packet(expected: int):
+        uart = getattr(sensor_obj, '_uart', getattr(sensor_obj, 'uart', None))
+        if not uart:
+            raise RuntimeError("UART interface unavailable on fingerprint sensor")
+        start_time = time.monotonic()
+        timeout = getattr(uart, 'timeout', 2.5) or 2.5
+
+        # 1. Slide through stream to synchronize on start code 0xEF01
+        header = bytearray()
+        while time.monotonic() - start_time < timeout:
+            b = uart.read(1)
+            if not b:
+                continue
+            header += b
+            if len(header) >= 2:
+                if header[-2:] == b'\xef\x01':
+                    break
+                header = header[-1:]
+        else:
+            raise RuntimeError("Sensor packet timeout: 0xEF01 header not found")
+
+        # 2. Read remaining (expected - 2) bytes
+        needed = expected - 2
+        rest = bytearray()
+        while len(rest) < needed and (time.monotonic() - start_time < timeout):
+            chunk = uart.read(needed - len(rest))
+            if chunk:
+                rest += chunk
+            else:
+                time.sleep(0.005)
+
+        if len(rest) < needed:
+            raise RuntimeError(f"Sensor packet incomplete: got {len(rest)} of {needed} bytes")
+
+        res = b'\xef\x01' + bytes(rest)
+        addr = list(res[2:6])
+        if addr != sensor_obj.address:
+            raise RuntimeError(f"Incorrect address: {addr}")
+        packet_type, length = struct.unpack(">BH", res[6:9])
+        if packet_type != 0x07:
+            raise RuntimeError(f"Incorrect packet type {packet_type}")
+
+        reply = list(res[9 : 9 + (length - 2)])
+        return reply
+
+    sensor_obj._send_packet = robust_send_packet
+    sensor_obj._get_packet = robust_get_packet
+
 def init_fingerprint(forced_port=None, forced_baud=None):
     global finger, finger_init_error, connected_port, connected_baud
     import glob
@@ -97,7 +158,9 @@ def init_fingerprint(forced_port=None, forced_baud=None):
 
     if finger is not None:
         try:
-            finger.uart.close()
+            uart = getattr(finger, '_uart', getattr(finger, 'uart', None))
+            if uart:
+                uart.close()
         except Exception:
             pass
         finger = None
@@ -108,23 +171,17 @@ def init_fingerprint(forced_port=None, forced_baud=None):
     elif os.environ.get('FINGERPRINT_PORT'):
         candidate_ports.append(os.environ.get('FINGERPRINT_PORT'))
 
-    auto_ports = [
-        '/dev/serial0',
-        '/dev/ttyUSB0',
-        '/dev/ttyUSB1',
-        '/dev/ttyACM0',
-        '/dev/ttyAMA0',
-        '/dev/ttyS0',
-    ]
+    # Prioritize USB-UART adapters first (e.g. /dev/ttyUSB0)
     for usb_dev in glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*'):
-        if usb_dev not in auto_ports:
-            auto_ports.insert(0, usb_dev)
+        if usb_dev not in candidate_ports and os.path.exists(usb_dev):
+            candidate_ports.append(usb_dev)
 
-    for p in auto_ports:
+    for p in ['/dev/serial0', '/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyACM0', '/dev/ttyAMA0', '/dev/ttyS0']:
         if p not in candidate_ports and os.path.exists(p):
             candidate_ports.append(p)
+
     if not candidate_ports:
-        candidate_ports = ['/dev/serial0', '/dev/ttyS0', '/dev/ttyUSB0']
+        candidate_ports = ['/dev/ttyUSB0', '/dev/serial0', '/dev/ttyS0']
 
     candidate_bauds = [forced_baud] if forced_baud else [57600, 9600, 115200]
     errors = {}
@@ -137,8 +194,13 @@ def init_fingerprint(forced_port=None, forced_baud=None):
             uart = None
             try:
                 uart = serial.Serial(port, baudrate=baud, timeout=2.0)
+                if hasattr(uart, 'reset_input_buffer'):
+                    uart.reset_input_buffer()
+                if hasattr(uart, 'reset_output_buffer'):
+                    uart.reset_output_buffer()
                 time.sleep(0.15)
                 f = adafruit_fingerprint.Adafruit_Fingerprint(uart)
+                patch_adafruit_fingerprint(f)
                 finger = f
                 finger_init_error = None
                 connected_port = port
@@ -285,7 +347,7 @@ def reset_display(_auth: bool = Depends(authorize)):
     show_message('EVM Terminal\nEnter Voter ID')
     return {'ok': True, 'message': 'LCD display reset and resynchronized'}
 
-def safe_get_image(timeout_sec: float = 15.0) -> bool:
+def safe_get_image(timeout_sec: float = 20.0) -> bool:
     global finger
     deadline = time.monotonic() + timeout_sec
     import adafruit_fingerprint
@@ -296,22 +358,12 @@ def safe_get_image(timeout_sec: float = 15.0) -> bool:
                 time.sleep(0.5)
                 continue
         try:
-            # Clear input buffer to guarantee clean packet header alignment
-            if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
-                if finger._uart.in_waiting > 64:
-                    finger._uart.reset_input_buffer()
             res = finger.get_image()
             if res == adafruit_fingerprint.OK:
                 return True
-        except RuntimeError:
-            try:
-                if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
-                    finger._uart.reset_input_buffer()
-            except Exception:
-                pass
         except Exception:
             time.sleep(0.1)
-        time.sleep(0.2)
+        time.sleep(0.15)
     return False
 
 @agent_app.post('/fingerprint/match')
@@ -331,21 +383,15 @@ def fingerprint_match(_auth: bool = Depends(authorize)):
         import adafruit_fingerprint
         show_message('Place your finger' + chr(10) + 'on sensor...')
 
-        if not safe_get_image(timeout_sec=15.0):
+        if not safe_get_image(timeout_sec=20.0):
             show_message('Scan timeout' + chr(10) + 'Try again')
-            return {'matched': False, 'reason': 'timeout'}
-
-        try:
-            if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
-                finger._uart.reset_input_buffer()
-        except Exception:
-            pass
+            return {'matched': False, 'reason': 'timeout', 'message': 'Scan timed out. Place finger firmly on sensor.'}
 
         try:
             res = finger.image_2_tz(1)
             if res != adafruit_fingerprint.OK:
                 show_message('Feature error' + chr(10) + 'Try again')
-                return {'matched': False, 'reason': 'could_not_extract_features', 'sensor_code': res}
+                return {'matched': False, 'reason': 'could_not_extract_features', 'sensor_code': res, 'message': 'Could not extract features. Place finger flat.'}
 
             res = finger.finger_search()
             if res == adafruit_fingerprint.OK:
@@ -359,11 +405,11 @@ def fingerprint_match(_auth: bool = Depends(authorize)):
                 }
             if res == adafruit_fingerprint.NOTFOUND:
                 show_message('No Match Found' + chr(10) + 'Rejected')
-                return {'matched': False, 'reason': 'no_template_match'}
+                return {'matched': False, 'reason': 'no_template_match', 'message': 'No matching fingerprint found in sensor memory.'}
         except Exception as exc:
-            return {'matched': False, 'reason': f'Sensor read error: {exc}'}
+            return {'matched': False, 'reason': f'Sensor read error: {exc}', 'message': str(exc)}
 
-        return {'matched': False, 'reason': f'Search code {res}'}
+        return {'matched': False, 'reason': f'Search code {res}', 'message': f'Sensor return code {res}'}
 
 @agent_app.post('/fingerprint/enroll')
 def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(authorize)):
@@ -384,67 +430,78 @@ def fingerprint_enroll(req: FingerprintEnrollRequest, _auth: bool = Depends(auth
     with hardware_lock:
         import adafruit_fingerprint
 
-        def flush_buf():
-            try:
-                if hasattr(finger, '_uart') and hasattr(finger._uart, 'reset_input_buffer'):
-                    finger._uart.reset_input_buffer()
-            except Exception:
-                pass
-
-        flush_buf()
-        show_message(f'Enroll Slot #{slot}' + chr(10) + 'Place Finger...')
+        err_msgs = {
+            adafruit_fingerprint.IMAGEMESS: 'Fingerprint image too blurry/messy. Press firmly and flatly.',
+            adafruit_fingerprint.FEATUREFAIL: 'Too few minutiae points detected. Ensure finger is centered.',
+            adafruit_fingerprint.ENROLLMISMATCH: 'Two touches did not match. Please use the exact same finger.',
+            adafruit_fingerprint.BADLOCATION: f'Invalid slot #{slot}. Valid range is 1-127.',
+            adafruit_fingerprint.FLASHERR: 'Sensor flash storage error.',
+        }
 
         # Step 1: First finger touch
-        if not safe_get_image(timeout_sec=16.0):
+        show_message(f'Enroll Slot #{slot}' + chr(10) + 'Place Finger...')
+        print(f'[ENROLL] Waiting for first touch on slot #{slot}...')
+        if not safe_get_image(timeout_sec=20.0):
             show_message('Enroll Timeout' + chr(10) + 'Try Again')
-            return {'enrolled': False, 'reason': 'timeout_finger_1', 'message': 'First touch timed out. Place finger firmly on sensor.'}
+            return {'enrolled': False, 'reason': 'timeout_finger_1', 'message': 'First touch timed out. Place finger firmly on sensor glass.'}
 
-        flush_buf()
         try:
             res = finger.image_2_tz(1)
         except Exception as e:
             return {'enrolled': False, 'reason': 'feature_err_1', 'message': f'Minutiae read error: {e}'}
 
         if res != adafruit_fingerprint.OK:
+            msg = err_msgs.get(res, f'Feature extraction failed (code {res}). Place finger flat.')
             show_message('Feature Error' + chr(10) + 'Try Again')
-            return {'enrolled': False, 'reason': 'feature_extraction_failed_1', 'message': f'Feature extraction failed (code {res}). Place finger flat.'}
+            return {'enrolled': False, 'reason': f'feature_extraction_failed_1_{res}', 'message': msg}
 
         # Step 2: Remove finger
         show_message('Remove Finger...' + chr(10) + 'Wait 2 secs')
-        time.sleep(2)
+        release_deadline = time.monotonic() + 3.0
+        while time.monotonic() < release_deadline:
+            try:
+                if finger.get_image() == adafruit_fingerprint.NOFINGER:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.2)
+        time.sleep(1.0)
 
         # Step 3: Second confirmation touch
         show_message('Place Again' + chr(10) + 'Same Finger...')
-        if not safe_get_image(timeout_sec=16.0):
+        print(f'[ENROLL] Waiting for confirmation touch on slot #{slot}...')
+        if not safe_get_image(timeout_sec=20.0):
             show_message('Enroll Timeout' + chr(10) + 'Try Again')
             return {'enrolled': False, 'reason': 'timeout_finger_2', 'message': 'Second confirmation touch timed out. Try again.'}
 
-        flush_buf()
         try:
             res = finger.image_2_tz(2)
         except Exception as e:
             return {'enrolled': False, 'reason': 'feature_err_2', 'message': f'Minutiae read error: {e}'}
 
         if res != adafruit_fingerprint.OK:
+            msg = err_msgs.get(res, f'Second feature extraction failed (code {res}).')
             show_message('Feature Error' + chr(10) + 'Try Again')
-            return {'enrolled': False, 'reason': 'feature_extraction_failed_2', 'message': f'Second feature extraction failed (code {res}).'}
+            return {'enrolled': False, 'reason': f'feature_extraction_failed_2_{res}', 'message': msg}
 
         # Step 4: Model creation and flash burn
-        flush_buf()
         try:
             res = finger.create_model()
             if res != adafruit_fingerprint.OK:
+                msg = err_msgs.get(res, 'Prints did not match sufficiently. Use the exact same finger.')
                 show_message('Prints Differ' + chr(10) + 'Enroll Failed')
-                return {'enrolled': False, 'reason': 'prints_do_not_match', 'message': 'Prints did not match. Please use the exact same finger.'}
+                return {'enrolled': False, 'reason': 'prints_do_not_match', 'message': msg}
 
             res = finger.store_model(slot)
             if res != adafruit_fingerprint.OK:
+                msg = err_msgs.get(res, f'Sensor storage failed (code {res}).')
                 show_message('Store Failed' + chr(10) + f'Code: {res}')
-                return {'enrolled': False, 'reason': f'store_failed_{res}', 'message': f'Sensor storage failed (code {res}).'}
+                return {'enrolled': False, 'reason': f'store_failed_{res}', 'message': msg}
         except Exception as exc:
             return {'enrolled': False, 'reason': 'model_store_err', 'message': f'Store error: {exc}'}
 
         show_message(f'Slot #{slot} Stored' + chr(10) + 'Enroll Success!')
+        print(f'✓ Successfully enrolled fingerprint into slot #{slot}!')
         return {
             'enrolled': True,
             'slot': slot,

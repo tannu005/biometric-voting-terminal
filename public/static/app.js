@@ -1496,7 +1496,7 @@ window.addEventListener('DOMContentLoaded', () => {
 let currentTerminalMode = 'kiosk';
 let regCamStream = null;
 let regCapturedPhotoBase64 = null;
-let regCurrentSlot = 5;
+let regCurrentSlot = 1;
 let regFingerprintEnrolled = false;
 let regFingerprintMethod = 'RPI_R307S_SENSOR';
 let regFingerprintCredentialId = null;
@@ -1551,7 +1551,7 @@ async function fetchNextAvailableSlot() {
     const resp = await fetch('/api/voter/next-slot');
     if (resp.ok) {
       const data = await resp.json();
-      regCurrentSlot = data.next_slot || 5;
+      regCurrentSlot = data.next_slot || 1;
       const slotDisplay = document.getElementById('reg-slot-display');
       const slotInput = document.getElementById('reg-slot-input');
       if (slotDisplay) slotDisplay.innerText = `Slot #${regCurrentSlot}`;
