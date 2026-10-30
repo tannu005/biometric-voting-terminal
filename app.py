@@ -146,46 +146,6 @@ except Exception:
 
 DEFAULT_VOTERS = [
     {
-        "epic": "VOTE-IND-2026-001",
-        "name": "Aarav Sharma",
-        "constituency": "Central Tech Constituency - AC-07",
-        "gender": "Male",
-        "dob": "1994-08-15",
-        "fingerprint_slot": 1,
-        "is_eligible": True,
-        "photo": "VOTE-IND-2026-001.jpg"
-    },
-    {
-        "epic": "VOTE-IND-2026-002",
-        "name": "Priya Patel",
-        "constituency": "Central Tech Constituency - AC-07",
-        "gender": "Female",
-        "dob": "1998-03-22",
-        "fingerprint_slot": 2,
-        "is_eligible": True,
-        "photo": "VOTE-IND-2026-002.jpg"
-    },
-    {
-        "epic": "VOTE-IND-2026-003",
-        "name": "Vikram Malhotra",
-        "constituency": "Central Tech Constituency - AC-07",
-        "gender": "Male",
-        "dob": "1988-11-04",
-        "fingerprint_slot": 3,
-        "is_eligible": True,
-        "photo": "VOTE-IND-2026-003.jpg"
-    },
-    {
-        "epic": "VOTE-IND-2026-004",
-        "name": "Ananya Sen",
-        "constituency": "Central Tech Constituency - AC-07",
-        "gender": "Female",
-        "dob": "2001-05-19",
-        "fingerprint_slot": 4,
-        "is_eligible": True,
-        "photo": "VOTE-IND-2026-004.jpg"
-    },
-    {
         "epic": "VOTE-IND-2026-668",
         "name": "NAVEEN",
         "constituency": "Central Tech Constituency - AC-07",
@@ -243,6 +203,8 @@ DEFAULT_CANDIDATES = [
 RUNTIME_VOTERS: Dict[str, Dict[str, Any]] = {}
 REGISTERED_PHOTOS: Dict[str, bytes] = {}
 
+MOCK_EXCLUDED_EPICS = {"VOTE-IND-2026-001", "VOTE-IND-2026-002", "VOTE-IND-2026-003", "VOTE-IND-2026-004"}
+
 def load_voters() -> Dict[str, Dict[str, Any]]:
     result = {v["epic"].upper(): dict(v) for v in DEFAULT_VOTERS}
     if os.path.exists(VOTERS_FILE):
@@ -268,6 +230,10 @@ def load_voters() -> Dict[str, Dict[str, Any]]:
 
     for k, v in RUNTIME_VOTERS.items():
         result[k.upper()] = dict(v)
+
+    # Strictly exclude deprecated mock voters so only registered voters are permitted
+    for mock_id in MOCK_EXCLUDED_EPICS:
+        result.pop(mock_id, None)
 
     return result
 
@@ -737,6 +703,7 @@ class FaceVerifyRequest(BaseModel):
     epic: str
     image_data: Optional[str] = None
     ref_photo_base64: Optional[str] = None
+    force_mock: Optional[bool] = False
 
 class FaceDetectRequest(BaseModel):
     image_data: str
@@ -831,7 +798,7 @@ async def serve_voter_photo(filename: str):
             except Exception:
                 pass
 
-    fallback_path = os.path.join(ROOT_DIR, "public", "voter_db", "VOTE-IND-2026-001.jpg")
+    fallback_path = os.path.join(ROOT_DIR, "public", "voter_db", "VOTE-IND-2026-668.jpg")
     if os.path.exists(fallback_path):
         try:
             with open(fallback_path, "rb") as f:
@@ -1049,7 +1016,7 @@ async def voter_lookup(req: VoterLookupRequest):
         else:
             raise HTTPException(
                 status_code=404,
-                detail={"error": "VOTER_NOT_FOUND", "message": f"EPIC '{epic}' not found in constituency roll."}
+                detail={"error": "VOTER_NOT_REGISTERED", "message": f"EPIC '{epic}' is not registered. Only registered voters are permitted to vote. Please register first."}
             )
 
     voter = voters[epic]
@@ -1291,7 +1258,8 @@ async def verify_face(req: FaceVerifyRequest):
     result = fusion_engine.process_facial_verification(
         epic,
         snapshot_frame=snapshot_frame,
-        raw_bytes=raw_bytes
+        raw_bytes=raw_bytes,
+        force_mock=req.force_mock
     )
 
     voters = load_voters()

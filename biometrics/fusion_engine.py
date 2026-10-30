@@ -48,7 +48,7 @@ class BiometricFusionEngine:
                 import app
                 ref_bytes = app.get_voter_photo_bytes(voter_epic)
                 if not ref_bytes:
-                    ref_bytes = app.get_voter_photo_bytes("VOTE-IND-2026-001")
+                    ref_bytes = app.get_voter_photo_bytes("VOTE-IND-2026-668")
                 if ref_bytes:
                     face_eval = app.compare_face_biometrics(ref_bytes, raw_bytes)
                 else:

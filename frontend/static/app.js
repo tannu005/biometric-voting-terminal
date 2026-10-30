@@ -60,46 +60,6 @@ const KioskState = {
 };
 
 const FALLBACK_VOTERS = {
-  "VOTE-IND-2026-001": {
-    epic: "VOTE-IND-2026-001",
-    name: "Aarav Sharma",
-    constituency: "Central Tech Constituency - AC-07",
-    gender: "Male",
-    dob: "1994-08-15",
-    fingerprint_slot: 1,
-    is_eligible: true,
-    photo_url: "/voter_db/VOTE-IND-2026-001.jpg"
-  },
-  "VOTE-IND-2026-002": {
-    epic: "VOTE-IND-2026-002",
-    name: "Priya Patel",
-    constituency: "Central Tech Constituency - AC-07",
-    gender: "Female",
-    dob: "1998-03-22",
-    fingerprint_slot: 2,
-    is_eligible: true,
-    photo_url: "/voter_db/VOTE-IND-2026-002.jpg"
-  },
-  "VOTE-IND-2026-003": {
-    epic: "VOTE-IND-2026-003",
-    name: "Vikram Malhotra",
-    constituency: "Central Tech Constituency - AC-07",
-    gender: "Male",
-    dob: "1988-11-04",
-    fingerprint_slot: 3,
-    is_eligible: true,
-    photo_url: "/voter_db/VOTE-IND-2026-003.jpg"
-  },
-  "VOTE-IND-2026-004": {
-    epic: "VOTE-IND-2026-004",
-    name: "Ananya Sen",
-    constituency: "Central Tech Constituency - AC-07",
-    gender: "Female",
-    dob: "2001-05-19",
-    fingerprint_slot: 4,
-    is_eligible: true,
-    photo_url: "/voter_db/VOTE-IND-2026-004.jpg"
-  },
   "VOTE-IND-2026-668": {
     epic: "VOTE-IND-2026-668",
     name: "NAVEEN",
@@ -124,10 +84,60 @@ const FALLBACK_VOTERS = {
 
 function getRegisteredVoters() {
   try {
-    return JSON.parse(localStorage.getItem('EVM_REGISTERED_VOTERS') || '{}');
+    const data = JSON.parse(localStorage.getItem('EVM_REGISTERED_VOTERS') || '{}');
+    const mockIds = ['VOTE-IND-2026-001', 'VOTE-IND-2026-002', 'VOTE-IND-2026-003', 'VOTE-IND-2026-004'];
+    let changed = false;
+    for (const id of mockIds) {
+      if (data[id]) {
+        delete data[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      localStorage.setItem('EVM_REGISTERED_VOTERS', JSON.stringify(data));
+    }
+    return data;
   } catch (e) {
     return {};
   }
+}
+
+function getRegisteredEpicsList() {
+  const epics = new Set();
+  epics.add('VOTE-IND-2026-668');
+  const stored = getRegisteredVoters();
+  Object.keys(stored).forEach(k => {
+    if (k !== 'VOTE-IND-668') epics.add(k.toUpperCase());
+  });
+  if (newlyRegisteredVoter && newlyRegisteredVoter.epic) {
+    epics.add(newlyRegisteredVoter.epic.toUpperCase());
+  }
+  return Array.from(epics);
+}
+
+function renderRegisteredVoterChips() {
+  const container = document.getElementById('quick-test-voters');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const epics = getRegisteredEpicsList();
+  const stored = getRegisteredVoters();
+
+  epics.forEach(epic => {
+    const voter = stored[epic] || FALLBACK_VOTERS[epic] || (newlyRegisteredVoter && newlyRegisteredVoter.epic === epic ? newlyRegisteredVoter : null);
+    const name = voter ? voter.name : epic;
+    const shortId = epic.split('-').pop();
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quick-chip';
+    btn.style.borderColor = '#38bdf8';
+    btn.style.color = '#38bdf8';
+    btn.style.fontWeight = '700';
+    btn.innerText = `👤 ${name} (${shortId})`;
+    btn.onclick = () => selectQuickEpic(epic);
+    container.appendChild(btn);
+  });
 }
 
 function saveRegisteredVoter(voter) {
@@ -138,6 +148,7 @@ function saveRegisteredVoter(voter) {
     voters[epic] = voter;
     localStorage.setItem('EVM_REGISTERED_VOTERS', JSON.stringify(voters));
     FALLBACK_VOTERS[epic] = voter;
+    renderRegisteredVoterChips();
   } catch (e) {}
 }
 
@@ -314,6 +325,10 @@ function selectQuickEpic(epic) {
   submitEpicLookup();
 }
 
+function submitEpic() {
+  return submitEpicLookup();
+}
+
 async function submitEpicLookup() {
   const epic = epicInput.value.trim().toUpperCase();
   if (!epic) {
@@ -377,7 +392,7 @@ async function submitEpicLookup() {
 
       const data = await resp.json().catch(() => ({}));
       audio.errorTone();
-      showEpicError(data.detail?.message || `EPIC '${epic}' not found in constituency roll.`);
+      showEpicError(data.detail?.message || `❌ EPIC '${epic}' is not registered. Only registered voters are permitted to vote. Please use 'Register Voter' first.`);
       return;
     }
   } catch (err) {
@@ -396,7 +411,7 @@ async function submitEpicLookup() {
       return;
     }
     audio.errorTone();
-    showEpicError(`EPIC '${epic}' not found in constituency roll.`);
+    showEpicError(`❌ EPIC '${epic}' is not registered. Only registered voters are permitted to vote. Please use 'Register Voter' first.`);
   } finally {
     submitBtn.disabled = false;
     submitBtn.innerText = "Verify Voter Identity →";
@@ -1443,6 +1458,7 @@ function resetKioskForNextVoter() {
   }
 
   setScreenState(1);
+  renderRegisteredVoterChips();
 }
 
 let consecutiveHealthFailures = 0;
@@ -1645,10 +1661,12 @@ function handlePhysicalSwitchEvent(switchName) {
     }
   } else if (currentScreen === 1) {
     if (switchName === 'switch_1' || switchName === 'switch_2') {
-      const epics = ['VOTE-IND-2026-668', 'VOTE-IND-2026-001', 'VOTE-IND-2026-002', 'VOTE-IND-2026-003', 'VOTE-IND-2026-004'];
-      const current = document.getElementById('epic-input-field').value.trim();
-      let nextIdx = (epics.indexOf(current) + 1) % epics.length;
-      selectQuickEpic(epics[nextIdx]);
+      const epics = getRegisteredEpicsList();
+      if (epics && epics.length > 0) {
+        const current = document.getElementById('epic-input-field').value.trim();
+        let nextIdx = (epics.indexOf(current) + 1) % epics.length;
+        selectQuickEpic(epics[nextIdx]);
+      }
     } else if (switchName === 'switch_3') {
       submitEpic();
     }
@@ -1765,6 +1783,7 @@ window.addEventListener('DOMContentLoaded', () => {
   checkSystemDiagnostic();
   setInterval(checkSystemDiagnostic, 4000);
   initSensorTouchListeners();
+  renderRegisteredVoterChips();
   startHardwareEventPolling();
 });
 
